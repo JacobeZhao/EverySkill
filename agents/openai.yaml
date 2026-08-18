@@ -1,0 +1,7 @@
+interface:
+  display_name: "Everyskill"
+  short_description: "Route every request by intent and complexity"
+  default_prompt: "Use $everyskill to classify this request, assess its complexity, and route it to the best available skill."
+
+policy:
+  allow_implicit_invocation: true
