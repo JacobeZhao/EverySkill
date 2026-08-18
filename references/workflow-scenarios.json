@@ -1,0 +1,198 @@
+{
+  "schema_version": "1",
+  "catalog_version": "1",
+  "scenarios": [
+    {
+      "id": "direct-fast-path",
+      "description": "A self-evident response remains with the coordinator.",
+      "request": "Explain the supplied one-line constant.",
+      "kind": "coverage",
+      "coverage": ["direct-fast-path"],
+      "expected": {"workflow_ids": [], "references": [], "topology": ["DIRECT"], "status": "core_direct", "behavior": "Skip workflow loading."}
+    },
+    {
+      "id": "route-one-fast-path",
+      "description": "One visible specialist can complete a narrow operation.",
+      "request": "Use the named document skill to read this document.",
+      "kind": "coverage",
+      "coverage": ["route-one-fast-path"],
+      "expected": {"workflow_ids": [], "references": [], "topology": ["ROUTE_ONE"], "status": "routed", "behavior": "Route only to the explicit specialist."}
+    },
+    {
+      "id": "software-change-positive",
+      "description": "An authorized implementation with tests uses the software workflow.",
+      "request": "Implement the approved parser change and add regression tests.",
+      "kind": "positive",
+      "coverage": [],
+      "positive_for": "software-change",
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Bound scope, implement, review, verify, and report."}
+    },
+    {
+      "id": "software-change-near-miss",
+      "description": "Cause finding without repair authority is not a software change.",
+      "request": "Explain why the service crashes; do not modify anything.",
+      "kind": "near_miss",
+      "coverage": ["read-only-mode"],
+      "near_miss_for": "software-change",
+      "expected": {"workflow_ids": ["diagnosis"], "references": ["references/workflow-diagnosis.md"], "topology": ["SEQUENTIAL", "PARALLEL_SAMPLE", "PARALLEL_SECTION"], "status": "routed", "behavior": "Keep investigation read-only."}
+    },
+    {
+      "id": "diagnosis-positive",
+      "description": "An evidence-backed causal explanation uses diagnosis.",
+      "request": "Diagnose why requests intermittently time out without changing state.",
+      "kind": "positive",
+      "coverage": [],
+      "positive_for": "diagnosis",
+      "expected": {"workflow_ids": ["diagnosis"], "references": ["references/workflow-diagnosis.md"], "topology": ["SEQUENTIAL", "PARALLEL_SAMPLE", "PARALLEL_SECTION"], "status": "routed", "behavior": "Test distinct hypotheses and preserve uncertainty."}
+    },
+    {
+      "id": "diagnosis-near-miss",
+      "description": "A known cause with an authorized repair is not diagnosis-led.",
+      "request": "The null check is missing; add it and test the fix.",
+      "kind": "near_miss",
+      "coverage": [],
+      "near_miss_for": "diagnosis",
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Use the authorized change workflow."}
+    },
+    {
+      "id": "research-decision-positive",
+      "description": "A comparison and recommendation uses research and decision.",
+      "request": "Compare the three storage options and recommend one with evidence.",
+      "kind": "positive",
+      "coverage": [],
+      "positive_for": "research-decision",
+      "expected": {"workflow_ids": ["research-decision"], "references": ["references/workflow-research-decision.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Normalize evidence and calibrate the recommendation."}
+    },
+    {
+      "id": "research-decision-near-miss",
+      "description": "Research that only supports a requested artifact is artifact-led.",
+      "request": "Research the audience and create the final presentation.",
+      "kind": "near_miss",
+      "coverage": ["research-then-artifact"],
+      "near_miss_for": "research-decision",
+      "expected": {"workflow_ids": ["artifact-creation"], "references": ["references/workflow-artifact-creation.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Treat research as an artifact-creation stage."}
+    },
+    {
+      "id": "artifact-creation-positive",
+      "description": "A substantial rendered deliverable uses artifact creation.",
+      "request": "Create and visually verify the final PDF report.",
+      "kind": "positive",
+      "coverage": [],
+      "positive_for": "artifact-creation",
+      "expected": {"workflow_ids": ["artifact-creation"], "references": ["references/workflow-artifact-creation.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Brief, create, render, inspect, revise, and report."}
+    },
+    {
+      "id": "artifact-creation-near-miss",
+      "description": "A trivial specialist-owned artifact operation keeps the fast path.",
+      "request": "Rename the supplied document title.",
+      "kind": "near_miss",
+      "coverage": [],
+      "near_miss_for": "artifact-creation",
+      "expected": {"workflow_ids": [], "references": [], "topology": ["ROUTE_ONE"], "status": "routed", "behavior": "Use the owning specialist without loading a workflow."}
+    },
+    {
+      "id": "diagnose-then-fix",
+      "description": "Unknown cause is a bounded stage of the authorized software deliverable.",
+      "request": "Find the cause, then implement and verify the authorized fix.",
+      "kind": "coverage",
+      "coverage": ["diagnose-then-fix"],
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Use one software workflow with diagnosis as a stage."}
+    },
+    {
+      "id": "software-plus-documentation",
+      "description": "Documentation supporting one software outcome stays in its lead workflow.",
+      "request": "Implement the feature and update its usage documentation.",
+      "kind": "coverage",
+      "coverage": ["software-plus-documentation"],
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Treat supporting documentation as part of the software deliverable."}
+    },
+    {
+      "id": "distinct-deliverables-composition",
+      "description": "Independent software and publication deliverables compose two workflows.",
+      "request": "Ship the code change and separately deliver a polished executive PDF with its own acceptance criteria.",
+      "kind": "coverage",
+      "coverage": ["two-distinct-deliverables-composition"],
+      "expected": {"workflow_ids": ["software-change", "artifact-creation"], "references": ["references/workflow-software-change.md", "references/workflow-artifact-creation.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Compose distinct lead workflows through the intent DAG and explicit join."}
+    },
+    {
+      "id": "explicit-skill-dominance",
+      "description": "An explicit compatible skill remains the mandatory owner.",
+      "request": "Use the explicitly named PDF skill to create the report.",
+      "kind": "coverage",
+      "coverage": ["explicit-skill-dominance"],
+      "expected": {"workflow_ids": ["artifact-creation"], "references": ["references/workflow-artifact-creation.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Preserve explicit skill ownership inside the selected workflow."}
+    },
+    {
+      "id": "missing-capability",
+      "description": "Unavailable required capability is not simulated.",
+      "request": "Create an artifact in a format for which no visible capability exists.",
+      "kind": "coverage",
+      "coverage": ["missing-capability"],
+      "expected": {"workflow_ids": ["artifact-creation"], "references": ["references/workflow-artifact-creation.md"], "topology": ["HUMAN_GATE"], "status": "blocked", "behavior": "Use a safe fallback, clarify, or block without simulating the capability."}
+    },
+    {
+      "id": "worker-partial-failure",
+      "description": "A failed evidence lane remains visible at the join.",
+      "request": "One research worker failed while other lanes returned useful evidence.",
+      "kind": "coverage",
+      "coverage": ["worker-partial-failure"],
+      "expected": {"workflow_ids": ["research-decision"], "references": ["references/workflow-research-decision.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Continue only if useful and preserve the failed lane and affected criteria."}
+    },
+    {
+      "id": "budget-stop",
+      "description": "Exhausted execution budget stops further orchestration.",
+      "request": "The selected workflow has exhausted its branch budget.",
+      "kind": "coverage",
+      "coverage": ["budget-stop"],
+      "expected": {"workflow_ids": ["diagnosis"], "references": ["references/workflow-diagnosis.md"], "topology": ["SEQUENTIAL", "PARALLEL_SAMPLE", "PARALLEL_SECTION"], "status": "failed", "behavior": "Stop and report the evidence collected within budget."}
+    },
+    {
+      "id": "no-progress-stop",
+      "description": "A bounded review loop stops when another round adds no material progress.",
+      "request": "The last review round produced no material improvement.",
+      "kind": "coverage",
+      "coverage": ["no-progress-stop"],
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["REVIEW_LOOP"], "status": "failed", "behavior": "Stop the loop and report unresolved findings."}
+    },
+    {
+      "id": "missing-authority",
+      "description": "Missing mutation authority blocks before action.",
+      "request": "Apply a software change without any stated mutation authority.",
+      "kind": "coverage",
+      "coverage": ["missing-authority"],
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["HUMAN_GATE"], "status": "blocked", "behavior": "Stop at the authority gate with AUTHORITY_REQUIRED."}
+    },
+    {
+      "id": "forbidden-authority",
+      "description": "An explicit prohibition cannot be cured by workflow selection.",
+      "request": "Modify a protected path that higher-priority instructions forbid changing.",
+      "kind": "coverage",
+      "coverage": ["forbidden-authority"],
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["DIRECT"], "status": "blocked", "behavior": "Block with AUTHORITY_FORBIDDEN before mutation; a human gate cannot cure a prohibition."}
+    },
+    {
+      "id": "stale-workflow-marker",
+      "description": "A changed selected workflow version invalidates packet freshness.",
+      "request": "Continue from a packet whose workflow catalog marker no longer matches when rebuilding inputs are unavailable.",
+      "kind": "coverage",
+      "coverage": ["stale-workflow-marker"],
+      "expected": {"workflow_ids": ["research-decision"], "references": ["references/workflow-research-decision.md"], "topology": ["DIRECT"], "status": "blocked", "behavior": "Rebuild before handoff or stop with STALE_PACKET if rebuilding is unavailable."}
+    },
+    {
+      "id": "v1-incompatible",
+      "description": "A v1 packet is never silently interpreted as v2.",
+      "request": "Resume using an everyskill.route/v1 packet when the latest canonical request and current authority or catalog inputs are unavailable for rebuilding.",
+      "kind": "coverage",
+      "coverage": ["v1-incompatible"],
+      "expected": {"workflow_ids": [], "references": [], "topology": ["DIRECT"], "status": "blocked", "behavior": "Reject incompatible packet semantics."}
+    },
+    {
+      "id": "v1-rebuild",
+      "description": "A v1 packet can proceed only after rebuilding a fresh v2 packet.",
+      "request": "For the currently authorized request to implement the parser change and regression tests, rebuild the old v1 packet from the current request, authority, and catalogs.",
+      "kind": "coverage",
+      "coverage": ["v1-rebuild"],
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Rebuild v2 and then continue from current truth sources."}
+    }
+  ]
+}
