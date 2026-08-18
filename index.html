@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="EverySkill Agent 拓扑编排工作台">
+  <title>EverySkill | Agent 拓扑编排</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="#workspace" aria-label="EverySkill 工作台">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>EverySkill</span>
+      <small>Orchestration Lab</small>
+    </a>
+    <nav class="primary-nav" aria-label="主要导航">
+      <a class="active" href="#workspace">工作台</a>
+      <a href="#topology-library">拓扑库</a>
+      <a href="#run-log">运行记录</a>
+    </nav>
+    <div class="header-meta">
+      <span class="status-dot"></span>
+      <span>本地推演引擎</span>
+      <button class="icon-button" id="theme-toggle" type="button" title="切换显示模式" aria-label="切换显示模式">◐</button>
+    </div>
+  </header>
+
+  <main id="workspace">
+    <section class="command-band" aria-labelledby="workspace-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">NEW ORCHESTRATION</p>
+          <h1 id="workspace-title">把问题变成可执行的 Agent 拓扑</h1>
+        </div>
+        <div class="run-id">RUN <strong id="run-id">ES-0821</strong></div>
+      </div>
+
+      <label class="problem-input" for="problem">
+        <span>要解决的问题</span>
+        <textarea id="problem" rows="3" spellcheck="false">分析线上 API 偶发超时的根因，比较三个可能原因，给出证据充分且不修改生产环境的诊断结论。</textarea>
+      </label>
+
+      <div class="control-row">
+        <fieldset class="segmented-control">
+          <legend>优化目标</legend>
+          <button type="button" data-objective="success">成功率优先</button>
+          <button class="active" type="button" data-objective="balanced">综合平衡</button>
+          <button type="button" data-objective="speed">耗时优先</button>
+        </fieldset>
+
+        <label class="select-control">
+          <span>最大耗时</span>
+          <select id="time-budget">
+            <option value="45">45 秒</option>
+            <option value="90" selected>90 秒</option>
+            <option value="180">3 分钟</option>
+            <option value="300">5 分钟</option>
+          </select>
+        </label>
+
+        <label class="range-control">
+          <span>成功率权重 <output id="weight-output">68%</output></span>
+          <input id="success-weight" type="range" min="35" max="90" value="68">
+        </label>
+
+        <button class="primary-button" id="analyze-button" type="button">
+          <span aria-hidden="true">↗</span> 生成最优拓扑
+        </button>
+      </div>
+
+      <div class="examples" aria-label="问题样例">
+        <span>载入样例</span>
+        <button type="button" data-example="diagnosis">故障诊断</button>
+        <button type="button" data-example="research">研究决策</button>
+        <button type="button" data-example="software">软件变更</button>
+        <button type="button" data-example="artifact">制品创建</button>
+      </div>
+    </section>
+
+    <section class="result-layout" aria-label="拓扑编排结果">
+      <div class="topology-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">RECOMMENDED TOPOLOGY</p>
+            <h2 id="topology-name">证据并行 · 诊断汇合</h2>
+          </div>
+          <div class="toolbar">
+            <span class="topology-badge" id="topology-kind">HYBRID</span>
+            <button class="icon-button" id="reset-view" type="button" title="重置拓扑视图" aria-label="重置拓扑视图">↺</button>
+          </div>
+        </div>
+
+        <div class="topology-canvas" id="topology-canvas" role="img" aria-label="Agent 编排拓扑图">
+          <svg id="edge-layer" aria-hidden="true"></svg>
+          <div id="node-layer"></div>
+          <div class="canvas-legend">
+            <span><i class="legend-dot coordinator"></i>协调器</span>
+            <span><i class="legend-dot worker"></i>执行 Agent</span>
+            <span><i class="legend-dot verifier"></i>校验 Agent</span>
+            <span><i class="legend-line"></i>关键路径</span>
+          </div>
+        </div>
+
+        <div class="topology-footer">
+          <div><span>拓扑基元</span><strong id="primitive-list">SEQUENTIAL · PARALLEL_SAMPLE · PARALLEL_SECTION</strong></div>
+          <div><span>关键路径</span><strong id="critical-path">4 阶段 / 71 秒</strong></div>
+          <div><span>并行宽度</span><strong id="parallel-width">3 Agents</strong></div>
+        </div>
+      </div>
+
+      <aside class="decision-panel" aria-labelledby="decision-title">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">DECISION TRACE</p>
+            <h2 id="decision-title">为什么这样编排</h2>
+          </div>
+          <span class="confidence"><i></i>高置信</span>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric success">
+            <span>预计成功率</span>
+            <strong id="success-metric">92.4<small>%</small></strong>
+            <em id="success-delta">+14.8% vs 直接回答</em>
+          </div>
+          <div class="metric latency">
+            <span>P50 预计耗时</span>
+            <strong id="latency-metric">71<small>s</small></strong>
+            <em id="budget-status">预算内 19s</em>
+          </div>
+          <div class="metric cost">
+            <span>Token 预算</span>
+            <strong id="token-metric">18.6<small>k</small></strong>
+            <em id="agent-count">6 个执行单元</em>
+          </div>
+          <div class="metric score">
+            <span>平衡得分</span>
+            <strong id="balance-metric">88<small>/100</small></strong>
+            <em>基于当前权重</em>
+          </div>
+        </div>
+
+        <div class="reason-list" id="reason-list"></div>
+
+        <div class="node-inspector" id="node-inspector">
+          <span>当前节点</span>
+          <strong>选择任意节点查看责任边界</strong>
+          <p>节点之间只传递完成下一阶段所需的最小上下文。</p>
+        </div>
+
+        <div class="action-row">
+          <button class="primary-button wide" id="run-button" type="button"><span aria-hidden="true">▶</span> 运行模拟</button>
+          <button class="secondary-button" id="export-button" type="button">导出方案</button>
+        </div>
+      </aside>
+    </section>
+
+    <section class="strategy-section" id="topology-library" aria-labelledby="strategy-title">
+      <div class="section-heading compact">
+        <div>
+          <p class="eyebrow">TOPOLOGY BENCHMARK</p>
+          <h2 id="strategy-title">候选方案对比</h2>
+        </div>
+        <p class="section-note">相同问题，不同编排结构的预测结果</p>
+      </div>
+      <div class="strategy-table" role="table" aria-label="候选拓扑对比">
+        <div class="strategy-row table-head" role="row">
+          <span>方案</span><span>结构</span><span>成功率</span><span>预计耗时</span><span>Token</span><span>综合得分</span>
+        </div>
+        <div id="strategy-rows"></div>
+      </div>
+    </section>
+
+    <section class="execution-section" id="run-log" aria-labelledby="execution-title">
+      <div class="section-heading compact">
+        <div>
+          <p class="eyebrow">EXECUTION TRACE</p>
+          <h2 id="execution-title">运行轨迹</h2>
+        </div>
+        <div class="execution-status"><i id="execution-indicator"></i><span id="execution-label">尚未运行</span></div>
+      </div>
+      <div class="trace-grid">
+        <div class="trace-timeline" id="trace-timeline">
+          <div class="empty-trace">运行模拟后，这里会显示每个 Agent 的输入、输出、耗时和汇合状态。</div>
+        </div>
+        <div class="policy-panel">
+          <h3>运行约束</h3>
+          <dl>
+            <div><dt>权限</dt><dd id="authority-policy">只读分析，不修改生产状态</dd></div>
+            <div><dt>失败策略</dt><dd id="failure-policy">保留失败分支，证据不足时降级输出</dd></div>
+            <div><dt>停止条件</dt><dd id="stop-policy">两轮无置信提升或耗时预算耗尽</dd></div>
+            <div><dt>上下文</dt><dd>按节点最小披露，协调器持有唯一真相</dd></div>
+          </dl>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
