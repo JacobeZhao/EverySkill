@@ -6,7 +6,7 @@ The coordinator keeps the investigation read-only, preserves the observed facts 
 ```json
 {
   "id": "diagnosis",
-  "version": "1",
+  "version": "2",
   "controller": "hybrid",
   "topology": "SEQUENTIAL(PARALLEL_SAMPLE,PARALLEL_SECTION)",
   "tasks": [
@@ -43,21 +43,28 @@ The coordinator keeps the investigation read-only, preserves the observed facts 
       "objective": "Test the predictions of the first hypothesis using bounded read-only inspection.",
       "owner": "evidence-worker",
       "required_output": "Observations with provenance and their support, contradiction, or ambiguity for the hypothesis.",
-      "dependencies": ["hypothesis_a"]
+      "dependencies": ["hypothesis_set"]
     },
     {
       "id": "evidence_b",
       "objective": "Test the predictions of the second hypothesis using bounded read-only inspection.",
       "owner": "evidence-worker",
       "required_output": "Observations with provenance and their support, contradiction, or ambiguity for the hypothesis.",
-      "dependencies": ["hypothesis_b"]
+      "dependencies": ["hypothesis_set"]
     },
     {
       "id": "evidence_c",
       "objective": "Test the third hypothesis or document why it could not be tested within the evidence boundary.",
       "owner": "evidence-worker",
       "required_output": "Observations with provenance, or an explicit evidence gap.",
-      "dependencies": ["hypothesis_c"]
+      "dependencies": ["hypothesis_set"]
+    },
+    {
+      "id": "hypothesis_set",
+      "objective": "Preserve the independent candidates, reject only logical duplicates, and bind each surviving candidate to an evidence lane.",
+      "owner": "coordinator",
+      "required_output": "A candidate set with distinct claims, assigned evidence lanes, and any unavailable third candidate explicit.",
+      "dependencies": ["hypothesis_a", "hypothesis_b", "hypothesis_c"]
     },
     {
       "id": "judge",
@@ -78,13 +85,39 @@ The coordinator keeps the investigation read-only, preserves the observed facts 
     {"from": "frame", "to": "hypothesis_a", "kind": "control"},
     {"from": "frame", "to": "hypothesis_b", "kind": "control"},
     {"from": "frame", "to": "hypothesis_c", "kind": "control"},
-    {"from": "hypothesis_a", "to": "evidence_a", "kind": "data"},
-    {"from": "hypothesis_b", "to": "evidence_b", "kind": "data"},
-    {"from": "hypothesis_c", "to": "evidence_c", "kind": "data"},
+    {"from": "hypothesis_a", "to": "hypothesis_set", "kind": "data"},
+    {"from": "hypothesis_b", "to": "hypothesis_set", "kind": "data"},
+    {"from": "hypothesis_c", "to": "hypothesis_set", "kind": "data"},
+    {"from": "hypothesis_set", "to": "evidence_a", "kind": "context"},
+    {"from": "hypothesis_set", "to": "evidence_b", "kind": "context"},
+    {"from": "hypothesis_set", "to": "evidence_c", "kind": "context"},
     {"from": "evidence_a", "to": "judge", "kind": "data"},
     {"from": "evidence_b", "to": "judge", "kind": "data"},
     {"from": "evidence_c", "to": "judge", "kind": "data"},
     {"from": "judge", "to": "report", "kind": "data"}
+  ],
+  "topology_regions": [
+    {
+      "id": "main",
+      "primitive": "SEQUENTIAL",
+      "task_ids": ["frame", "hypothesis_a", "hypothesis_b", "hypothesis_c", "hypothesis_set", "evidence_a", "evidence_b", "evidence_c", "judge", "report"]
+    },
+    {
+      "id": "hypothesis_sampling",
+      "primitive": "PARALLEL_SAMPLE",
+      "branches": [["hypothesis_a"], ["hypothesis_b"], ["hypothesis_c"]],
+      "join_task": "hypothesis_set",
+      "join_mode": "all_settled",
+      "failure_mode": "preserve"
+    },
+    {
+      "id": "evidence_collection",
+      "primitive": "PARALLEL_SECTION",
+      "branches": [["evidence_a"], ["evidence_b"], ["evidence_c"]],
+      "join_task": "judge",
+      "join_mode": "all_settled",
+      "failure_mode": "preserve"
+    }
   ],
   "join_policy": {
     "hypotheses": "Keep candidates independent until evidence collection begins and deduplicate only logically equivalent claims.",

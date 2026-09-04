@@ -6,7 +6,7 @@ The coordinator owns the brief, acceptance criteria, and authoritative output. S
 ```json
 {
   "id": "artifact-creation",
-  "version": "1",
+  "version": "2",
   "controller": "hybrid",
   "topology": "SEQUENTIAL(PARALLEL_SECTION,REVIEW_LOOP)",
   "tasks": [
@@ -76,6 +76,29 @@ The coordinator owns the brief, acceptance criteria, and authoritative output. S
     {"from": "render_inspect", "to": "review", "kind": "data"},
     {"from": "review", "to": "finalize", "kind": "data"},
     {"from": "finalize", "to": "report", "kind": "data"}
+  ],
+  "topology_regions": [
+    {
+      "id": "main",
+      "primitive": "SEQUENTIAL",
+      "task_ids": ["brief", "structure", "assets", "create", "render_inspect", "review", "finalize", "report"]
+    },
+    {
+      "id": "preproduction",
+      "primitive": "PARALLEL_SECTION",
+      "branches": [["structure"], ["assets"]],
+      "join_task": "create",
+      "join_mode": "all_settled",
+      "failure_mode": "preserve"
+    },
+    {
+      "id": "artifact_review",
+      "primitive": "REVIEW_LOOP",
+      "task_ids": ["render_inspect", "review", "finalize"],
+      "exit_task": "report",
+      "max_rounds": 2,
+      "exit_conditions": ["pass", "no_material_progress", "budget_exhausted"]
+    }
   ],
   "join_policy": {
     "preproduction": "Join structure and asset outputs before creation; preserve missing assets and constraints instead of silently substituting them.",

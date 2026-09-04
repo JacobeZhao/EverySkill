@@ -1,67 +1,38 @@
 # EverySkill
 
-EverySkill 是一个面向任意问题的自适应 Agent 编排器。
+EverySkill 是一个可配置的 Agent/Skill 编排 Skill。它通过 Markdown 工作流契约和场景规范，帮助宿主 Agent 判断任务是否需要编排、如何拆分任务、如何选择 Skill、如何组织串行或并行执行，以及如何汇总、验证和安全停止。
 
-对于同一个问题，不同的 Agent 和 Skill 编排方式可能产生不同的结果。简单问题通常适合由主 Agent 直接回答；复杂问题则可能需要任务拆分、专业 Skill 协作、串行处理、并行处理、结果汇总和独立验证。
+## 包含内容
 
-EverySkill 的目标是先理解问题，再根据问题的意图、复杂度、依赖关系、可并行性、风险和权限，动态生成合适的 Agent/Skill 解决方案，使简单问题保持低开销，同时让复杂问题获得与其难度相匹配的协作能力。
+- `SKILL.md`：核心路由与编排协议，包括意图分类、复杂度、风险、权限、拓扑原语、Route Packet 和失败安全规则。
+- `references/workflow-catalog.md`：工作流选择目录和匹配优先级。
+- `references/workflow-*.md`：软件变更、诊断、研究决策和制品创建的示例工作流契约。
+- `references/topology-selection.md`：拓扑选择决策表、并行独立性、边语义和汇合规则。
+- `references/workflow-template.md`：可复制的最小工作流契约模板和字段规则。
+- `references/workflow-authoring-guide.md`：新增或修改工作流的完整步骤。
+- `references/route-packet-examples.md`：直接、并行、权限门控、部分失败和过期 Packet 示例。
+- `references/host-capabilities.md`：宿主最小能力和安全降级规则。
+- `references/workflow-scenarios.json`：正例、近似误匹配、权限、预算、失败和版本场景。
+- `scripts/validate_workflows.py`：校验工作流目录、契约结构、任务 DAG、预算和场景覆盖。
+- `tests/test_validate_workflows.py`：校验器回归测试。
 
-## 核心目标
+## 如何配置
 
-EverySkill 需要为每个请求回答以下问题：
+使用者可以按自己的 Skill 目录和宿主能力修改或新增工作流：
 
-1. 这个问题是否需要编排，还是可以直接回答？
-2. 问题应该如何拆分为边界清晰的子任务？
-3. 每个子任务应该由哪个 Agent 或 Skill 负责？
-4. 子任务之间应该直接、串行、并行，还是采用混合拓扑？
-5. Agent 之间应该如何传递上下文和中间产物？
-6. 如何汇总、验证和冲突消解，形成最终答案？
+1. 阅读 `references/workflow-authoring-guide.md`，确认新需求不能由直接处理、单 Skill 或已有工作流覆盖。
+2. 复制 `references/workflow-template.md`，定义任务 DAG、类型化边和 `topology_regions`。
+3. 在 `references/workflow-catalog.md` 增加唯一的工作流 ID、版本、匹配条件和引用路径。
+4. 在 `SKILL.md` 中保持直接链接，并在 `workflow-scenarios.json` 中补充正例、近似误匹配、权限、失败、预算和宿主降级场景。
+5. 运行校验器和测试，确认依赖图、拓扑区域、版本、预算和引用一致。
 
-## 编排方式
+工作流是任务级流程，不授予权限，也不替代宿主 Agent 或其他 Skill 的能力。实际执行、工具调用和权限控制由宿主环境负责。
 
-根据任务特征，EverySkill 可以选择不同的处理方式：
-
-- **直接处理**：简单、明确的问题由主 Agent 直接回答。
-- **单 Skill 处理**：单一专业问题交给最匹配的 Skill 或专业 Agent。
-- **串行编排**：存在前后依赖的子任务依次执行，后一步消费前一步的结果。
-- **并行编排**：相互独立的子任务同时执行，再由主 Agent 汇总结果。
-- **混合编排**：复杂任务组合使用串行和并行流程，并根据中间结果动态调整。
-- **验证编排**：对高风险或高质量要求的任务，将执行和验证分离，必要时请求用户确认。
-
-## 预期流程
-
-```text
-用户问题
-  -> 识别意图、约束和权限
-  -> 评估复杂度、依赖、风险与可并行性
-  -> 拆分任务并选择 Agent / Skill
-  -> 生成直接、串行、并行或混合编排方案
-  -> 执行并传递中间产物
-  -> 汇总、验证和冲突消解
-  -> 返回最终结果
-```
-
-## 当前状态
-
-当前仓库首先实现了编排决策的基础协议，包括：
-
-- 请求意图分类与任务依赖建模；
-- 多维度复杂度分析；
-- 风险、权限、工作量和置信度评估；
-- 可见 Skill 的选择与路由；
-- 结构化 Route Packet；
-- 越权、重复路由和循环路由防护。
-
-当前实现已经覆盖通用路由、编排原语和 Route Packet，并通过渐进式披露为软件变更、调查诊断、研究决策和复杂制品创建提供独立流程。EverySkill 目前仍是由宿主 Agent 解释和执行的编排协议，不包含持久化调度器、事件总线或自动外部操作；后续可以沿统一流程契约继续增加问题类型，并逐步完善中间产物管理和质量反馈。
-
-具体协议定义见 [SKILL.md](./SKILL.md)。
-
-## Web 工作台
-
-仓库根目录提供一个零依赖的 Agent 拓扑编排工作台。打开 `index.html` 即可使用，也可以启动任意静态文件服务器：
+## 验证
 
 ```powershell
-python -m http.server 4173
+python scripts/validate_workflows.py
+python -m pytest -q
 ```
 
-访问 `http://localhost:4173/`，输入问题后可以比较成功率、耗时和 Token 预算，查看推荐拓扑并运行逐节点模拟。当前预测数据用于交互原型验证，不代表真实生产基准。
+本仓库不包含业务后端、持久化调度器或生产 Agent 执行器。配置和使用以 Markdown 契约为准。

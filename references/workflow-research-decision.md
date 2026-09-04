@@ -6,7 +6,7 @@ The coordinator owns the criteria, evidence ledger, comparison, and final decisi
 ```json
 {
   "id": "research-decision",
-  "version": "1",
+  "version": "2",
   "controller": "hybrid",
   "topology": "SEQUENTIAL(PARALLEL_SECTION,REVIEW_LOOP)",
   "tasks": [
@@ -77,6 +77,29 @@ The coordinator owns the criteria, evidence ledger, comparison, and final decisi
     {"from": "normalize", "to": "synthesize", "kind": "data"},
     {"from": "synthesize", "to": "review", "kind": "data"},
     {"from": "review", "to": "report", "kind": "data"}
+  ],
+  "topology_regions": [
+    {
+      "id": "main",
+      "primitive": "SEQUENTIAL",
+      "task_ids": ["frame", "evidence_fit", "evidence_cost_risk", "evidence_counter", "normalize", "synthesize", "review", "report"]
+    },
+    {
+      "id": "evidence_lanes",
+      "primitive": "PARALLEL_SECTION",
+      "branches": [["evidence_fit"], ["evidence_cost_risk"], ["evidence_counter"]],
+      "join_task": "normalize",
+      "join_mode": "all_settled",
+      "failure_mode": "preserve"
+    },
+    {
+      "id": "decision_review",
+      "primitive": "REVIEW_LOOP",
+      "task_ids": ["synthesize", "review"],
+      "exit_task": "report",
+      "max_rounds": 2,
+      "exit_conditions": ["pass", "no_material_progress", "budget_exhausted"]
+    }
   ],
   "join_policy": {
     "evidence": "Wait for available independent lanes, preserve provenance and contradictions, and continue with partial evidence only when its limits remain explicit.",

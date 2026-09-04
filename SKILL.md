@@ -123,9 +123,13 @@ Treat the single JSON block immediately following `<!-- workflow-contract -->` i
 
 When adding or validating workflows, read [references/workflow-scenarios.json](references/workflow-scenarios.json). Do not load scenario fixtures during ordinary request handling.
 
+When authoring a new workflow, use [the workflow template](references/workflow-template.md) and follow [the authoring guide](references/workflow-authoring-guide.md). These are authoring references, not additional runtime workflows.
+
 ## Select Orchestration
 
 Read [references/orchestration-strategies.md](references/orchestration-strategies.md) only when designing or extending workflows, or when no internal workflow fits a request that still needs orchestration. Never load it after selecting an internal workflow for the current request. Skip it for self-evident direct responses and straightforward single-skill handoffs.
+
+For any nontrivial topology decision, apply [the topology selection rules](references/topology-selection.md). Use its independence test, edge semantics, join modes, and required selection record. The task graph remains an outer DAG; represent bounded review or retry behavior as a declared `topology_regions` entry, never as an unbounded back-edge.
 
 Choose among these canonical primitives: `DIRECT`, `ROUTE_ONE`, `HANDOFF`, `SEQUENTIAL`, `PARALLEL_SECTION`, `PARALLEL_SAMPLE`, `ORCHESTRATOR_WORKERS`, `REVIEW_LOOP`, and `HUMAN_GATE`. Compose complex work as a DAG of these primitives instead of inventing a new named pattern.
 
@@ -141,9 +145,13 @@ Record `orchestration.topology` only with canonical primitive names or an explic
 
 Select `code`, `llm`, or `hybrid` control independently from the topology. Prefer deterministic code control for known flows and a bounded hybrid controller for open-ended work. Never infer a topology directly from a complexity score, spawn agents merely because a score is high, or add coordination without identifying its benefit, budget, join behavior, and termination condition.
 
+Before handoff, compare the selected topology with [the host capability contract](references/host-capabilities.md). A capability fallback may serialize execution or reduce verification, but it may not change task meaning, expand authority, or simulate success.
+
 ## Create The Route Packet
 
 Use a compact packet internally for a trivial, high-confidence `core` route, but still record `orchestration.topology: DIRECT`. Emit or pass the extended fields only when routing to a skill, handling multiple nodes, resolving uncertainty, or guarding material risk.
+
+Use [the Route Packet examples](references/route-packet-examples.md) as semantic examples only. Generate identifiers, digests, freshness markers, authority, and execution state from the current request and host; never copy example placeholders as current truth.
 
 Use this exact topology/status pairing for a direct response:
 

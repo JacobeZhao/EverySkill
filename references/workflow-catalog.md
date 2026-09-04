@@ -1,6 +1,6 @@
 # Workflow Catalog
 
-Catalog version: `1`
+Catalog version: `2`
 
 Use this catalog only after visible skill ownership is known and `DIRECT` or straightforward `ROUTE_ONE` is insufficient. A workflow supplies a task-local procedure; it does not own capabilities, grant authority, or replace the intent DAG.
 
@@ -8,10 +8,10 @@ Use this catalog only after visible skill ownership is known and `DIRECT` or str
 
 | ID | Version | Primary requested outcome | Exclude or defer | Reference |
 | --- | --- | --- | --- | --- |
-| `software-change` | `1` | Modify software, configuration, or tests; implement a feature; fix a defect | Cause-finding or explanation without modification authority | [Software change](workflow-software-change.md) |
-| `diagnosis` | `1` | Establish why observed behavior occurs and report evidence or confidence | A known cause with a direct authorized fix | [Diagnosis](workflow-diagnosis.md) |
-| `research-decision` | `1` | Gather evidence, compare alternatives, rank, recommend, or decide | Causal diagnosis of one observed system | [Research and decision](workflow-research-decision.md) |
-| `artifact-creation` | `1` | Create or substantially revise a non-code artifact with staged quality checks | A simple artifact operation adequately owned by one specialist | [Artifact creation](workflow-artifact-creation.md) |
+| `software-change` | `2` | Modify software, configuration, or tests; implement a feature; fix a defect | Cause-finding or explanation without modification authority | [Software change](workflow-software-change.md) |
+| `diagnosis` | `2` | Establish why observed behavior occurs and report evidence or confidence | A known cause with a direct authorized fix | [Diagnosis](workflow-diagnosis.md) |
+| `research-decision` | `2` | Gather evidence, compare alternatives, rank, recommend, or decide | Causal diagnosis of one observed system | [Research and decision](workflow-research-decision.md) |
+| `artifact-creation` | `2` | Create or substantially revise a non-code artifact with staged quality checks | A simple artifact operation adequately owned by one specialist | [Artifact creation](workflow-artifact-creation.md) |
 
 ## Precedence
 

@@ -16,6 +16,7 @@ REQUIRED_CONTRACT_FIELDS = {
     "version",
     "controller",
     "topology",
+    "topology_regions",
     "tasks",
     "edges",
     "join_policy",
@@ -38,6 +39,26 @@ CANONICAL_PRIMITIVES = {
     "HUMAN_GATE",
 }
 CONTROLLERS = {"code", "llm", "hybrid"}
+EDGE_KINDS = {"data", "control", "context"}
+JOIN_MODES = {"all", "all_settled", "quorum", "first_acceptable"}
+AUTHORITY_STATUSES = {"sufficient", "conditional", "missing", "forbidden", "unknown"}
+HOST_FALLBACKS = {
+    "full": {
+        "none",
+        "block_without_simulation",
+        "partial_result",
+        "stop_with_collected_evidence",
+        "stop_with_unresolved_findings",
+        "wait_for_authority",
+        "block_forbidden",
+        "rebuild_or_block",
+        "reject_incompatible_packet",
+        "rebuild_v2",
+    },
+    "serial_only": {"serialize_parallel_regions"},
+    "single_agent": {"isolated_sequential_tasks"},
+    "no_human_gate": {"block_with_required_decision"},
+}
 ROUTE_STATUSES = {
     "core_direct",
     "routed",
@@ -69,6 +90,14 @@ REQUIRED_COVERAGE = {
     "stale-workflow-marker",
     "v1-incompatible",
     "v1-rebuild",
+    "sequential-dependency",
+    "parallel-independence",
+    "parallel-sample",
+    "review-loop",
+    "human-gate",
+    "host-parallel-fallback",
+    "host-single-agent-fallback",
+    "no-human-gate-fallback",
 }
 CONTRACT_MARKER = "<!-- workflow-contract -->"
 
@@ -90,7 +119,7 @@ def _parse_topology(value: str) -> set[str]:
         if not match:
             raise ValueError(f"expected primitive at offset {position}")
         primitive = match.group(0)
-        if primitive not in CANONICAL_PRIMITIVES:
+        if not isinstance(primitive, str) or primitive not in CANONICAL_PRIMITIVES:
             raise ValueError(f"invalid topology primitive {primitive}")
         tokens.add(primitive)
         position += len(primitive)
@@ -255,8 +284,9 @@ def _validate_graph(contract: dict[str, object], label: str, errors: list[str]) 
         if pair in edge_pairs:
             errors.append(f"{label}: duplicate edge {source}->{target}")
         edge_pairs.add(pair)
-        if not isinstance(edge.get("kind"), str) or not edge["kind"].strip():
-            errors.append(f"{label}: edge {source}->{target} has an empty kind")
+        edge_kind = edge.get("kind")
+        if not isinstance(edge_kind, str) or edge_kind not in EDGE_KINDS:
+            errors.append(f"{label}: edge {source}->{target} kind must be one of {', '.join(sorted(EDGE_KINDS))}")
 
     if dependencies != edge_pairs:
         missing_edges = dependencies - edge_pairs
@@ -305,6 +335,140 @@ def _validate_graph(contract: dict[str, object], label: str, errors: list[str]) 
         errors.append(f"{label}: workflow graph contains a cycle")
 
 
+def _validate_topology_regions(
+    contract: dict[str, object], topology_tokens: set[str], label: str, errors: list[str]
+) -> None:
+    regions = contract.get("topology_regions")
+    tasks = contract.get("tasks")
+    edges = contract.get("edges")
+    if not isinstance(regions, list) or not regions:
+        errors.append(f"{label}: topology_regions must be a nonempty array")
+        return
+    if not isinstance(tasks, list) or not isinstance(edges, list):
+        return
+
+    known_tasks = {
+        task.get("id") for task in tasks if isinstance(task, dict) and isinstance(task.get("id"), str)
+    }
+    adjacency = {task_id: [] for task_id in known_tasks}
+    for edge in edges:
+        if not isinstance(edge, dict):
+            continue
+        source, target = edge.get("from"), edge.get("to")
+        if source in adjacency and target in known_tasks:
+            adjacency[source].append(target)
+
+    def reaches(source: str, target: str) -> bool:
+        pending = deque([source])
+        seen: set[str] = set()
+        while pending:
+            node = pending.popleft()
+            if node == target:
+                return True
+            if node in seen:
+                continue
+            seen.add(node)
+            pending.extend(adjacency.get(node, []))
+        return False
+
+    region_ids: list[str] = []
+    mapped_primitives: set[str] = set()
+    for index, region in enumerate(regions):
+        prefix = f"{label}: topology region {index}"
+        if not isinstance(region, dict):
+            errors.append(f"{prefix} must be an object")
+            continue
+        region_id = region.get("id")
+        primitive = region.get("primitive")
+        if not isinstance(region_id, str) or not region_id.strip():
+            errors.append(f"{prefix} has an invalid id")
+        else:
+            region_ids.append(region_id)
+            prefix = f"{label}: topology region {region_id}"
+        if not isinstance(primitive, str) or primitive not in CANONICAL_PRIMITIVES:
+            errors.append(f"{prefix} has an invalid primitive")
+            continue
+        mapped_primitives.add(primitive)
+        if primitive not in topology_tokens:
+            errors.append(f"{prefix} primitive {primitive} is absent from topology")
+
+        if primitive in {"PARALLEL_SECTION", "PARALLEL_SAMPLE"}:
+            branches = region.get("branches")
+            join_task = region.get("join_task")
+            if not isinstance(branches, list) or len(branches) < 2:
+                errors.append(f"{prefix} branches must contain at least two branches")
+            else:
+                branch_tasks: list[str] = []
+                for branch_index, branch in enumerate(branches):
+                    if not isinstance(branch, list) or not branch or any(
+                        not isinstance(task_id, str) or task_id not in known_tasks for task_id in branch
+                    ):
+                        errors.append(f"{prefix} branch {branch_index} must contain known task IDs")
+                        continue
+                    branch_tasks.extend(branch)
+                    if isinstance(join_task, str) and join_task in known_tasks and not reaches(branch[-1], join_task):
+                        errors.append(f"{prefix} branch {branch_index} does not reach join task {join_task}")
+                if len(branch_tasks) != len(set(branch_tasks)):
+                    errors.append(f"{prefix} branches must not share tasks")
+            if not isinstance(join_task, str) or join_task not in known_tasks:
+                errors.append(f"{prefix} has an unknown join_task")
+            join_mode = region.get("join_mode")
+            if not isinstance(join_mode, str) or join_mode not in JOIN_MODES:
+                errors.append(f"{prefix} join_mode must be one of {', '.join(sorted(JOIN_MODES))}")
+            if not isinstance(region.get("failure_mode"), str) or not region["failure_mode"].strip():
+                errors.append(f"{prefix} must declare failure_mode")
+        elif primitive == "REVIEW_LOOP":
+            task_ids = region.get("task_ids")
+            max_rounds = region.get("max_rounds")
+            exits = region.get("exit_conditions")
+            if not isinstance(task_ids, list) or len(task_ids) < 2 or any(
+                not isinstance(task_id, str) or task_id not in known_tasks for task_id in task_ids
+            ):
+                errors.append(f"{prefix} task_ids must contain at least two known tasks")
+            if isinstance(max_rounds, bool) or not isinstance(max_rounds, int) or max_rounds < 1:
+                errors.append(f"{prefix} max_rounds must be a positive integer")
+            budget = contract.get("budget")
+            review_budget = budget.get("max_review_rounds") if isinstance(budget, dict) else None
+            if (
+                isinstance(max_rounds, int)
+                and not isinstance(max_rounds, bool)
+                and isinstance(review_budget, (int, float))
+                and not isinstance(review_budget, bool)
+                and max_rounds > review_budget
+            ):
+                errors.append(f"{prefix} max_rounds exceeds the workflow review budget")
+            exit_task = region.get("exit_task")
+            if not isinstance(exit_task, str) or exit_task not in known_tasks:
+                errors.append(f"{prefix} has an unknown exit_task")
+            elif isinstance(task_ids, list) and exit_task in task_ids:
+                errors.append(f"{prefix} exit_task must be outside the review region")
+            elif isinstance(task_ids, list) and all(isinstance(task_id, str) for task_id in task_ids):
+                if any(task_id in known_tasks and not reaches(task_id, exit_task) for task_id in task_ids):
+                    errors.append(f"{prefix} review tasks must reach exit_task {exit_task}")
+            if not isinstance(exits, list) or not exits or any(not isinstance(item, str) or not item for item in exits):
+                errors.append(f"{prefix} exit_conditions must be nonempty strings")
+        else:
+            task_ids = region.get("task_ids")
+            if not isinstance(task_ids, list) or not task_ids or any(
+                not isinstance(task_id, str) or task_id not in known_tasks for task_id in task_ids
+            ):
+                errors.append(f"{prefix} task_ids must contain known tasks")
+            if primitive == "HUMAN_GATE":
+                resume_task = region.get("resume_task")
+                if not isinstance(resume_task, str) or resume_task not in known_tasks:
+                    errors.append(f"{prefix} has an unknown resume_task")
+                if region.get("blocked_status") != "blocked":
+                    errors.append(f"{prefix} blocked_status must be 'blocked'")
+                if not isinstance(region.get("activation_condition"), str) or not region["activation_condition"].strip():
+                    errors.append(f"{prefix} must declare activation_condition")
+
+    if len(region_ids) != len(set(region_ids)):
+        errors.append(f"{label}: duplicate topology region ID")
+    missing_regions = topology_tokens - mapped_primitives
+    if missing_regions:
+        errors.append(f"{label}: topology primitives missing regions: {', '.join(sorted(missing_regions))}")
+
+
 def _validate_contract(contract: dict[str, object], row: dict[str, str], label: str, errors: list[str]) -> None:
     missing = REQUIRED_CONTRACT_FIELDS - set(contract)
     if missing:
@@ -320,13 +484,14 @@ def _validate_contract(contract: dict[str, object], row: dict[str, str], label: 
             errors.append(f"{label}: contract field {field} must be nonempty")
 
     controller = contract.get("controller")
-    if controller not in CONTROLLERS:
+    if not isinstance(controller, str) or controller not in CONTROLLERS:
         errors.append(f"{label}: controller must be one of {', '.join(sorted(CONTROLLERS))}")
 
     topology = contract.get("topology")
+    topology_tokens: set[str] = set()
     if isinstance(topology, str):
         try:
-            _parse_topology(topology)
+            topology_tokens = _parse_topology(topology)
         except ValueError as exc:
             errors.append(f"{label}: invalid topology: {exc}")
     else:
@@ -357,6 +522,7 @@ def _validate_contract(contract: dict[str, object], row: dict[str, str], label: 
     if not isinstance(stops, list) or not stops or any(not isinstance(item, str) or not item.strip() for item in stops):
         errors.append(f"{label}: stop_conditions must be a nonempty array of nonempty strings")
     _validate_graph(contract, label, errors)
+    _validate_topology_regions(contract, topology_tokens, label, errors)
 
 
 def _validate_scenarios(
@@ -364,6 +530,7 @@ def _validate_scenarios(
     root: Path,
     catalog_version: str | None,
     workflow_references: dict[str, str],
+    workflow_topologies: dict[str, set[str]],
     errors: list[str],
 ) -> None:
     label = _relative(path, root)
@@ -380,8 +547,8 @@ def _validate_scenarios(
         return
     workflow_ids = set(workflow_references)
     references = set(workflow_references.values())
-    if data.get("schema_version") != "1":
-        errors.append(f"{label}: schema_version must be '1'")
+    if data.get("schema_version") != "2":
+        errors.append(f"{label}: schema_version must be '2'")
     if str(data.get("catalog_version")) != catalog_version:
         errors.append(f"{label}: catalog_version does not match workflow catalog")
     scenarios = data.get("scenarios")
@@ -422,7 +589,7 @@ def _validate_scenarios(
         for field, target in (("positive_for", positives), ("near_miss_for", near_misses)):
             value = scenario.get(field)
             if value is not None:
-                if value not in workflow_ids:
+                if not isinstance(value, str) or value not in workflow_ids:
                     errors.append(f"{prefix} {field} refers to unknown workflow {value!r}")
                 else:
                     target.add(value)
@@ -431,7 +598,7 @@ def _validate_scenarios(
         if not isinstance(expected, dict):
             errors.append(f"{prefix} expected must be an object")
             continue
-        expected_required = {"workflow_ids", "references", "topology", "status", "behavior"}
+        expected_required = {"workflow_ids", "references", "topology", "status", "behavior", "decision"}
         expected_missing = expected_required - set(expected)
         if expected_missing:
             errors.append(f"{prefix} expected missing fields: {', '.join(sorted(expected_missing))}")
@@ -439,22 +606,63 @@ def _validate_scenarios(
         workflow_values = expected.get("workflow_ids")
         reference_values = expected.get("references")
         topology_values = expected.get("topology")
-        if not isinstance(workflow_values, list) or any(value not in workflow_ids for value in workflow_values):
+        if not isinstance(workflow_values, list) or any(
+            not isinstance(value, str) or value not in workflow_ids for value in workflow_values
+        ):
             errors.append(f"{prefix} expected.workflow_ids contains an unknown workflow")
-        if not isinstance(reference_values, list) or any(value not in references for value in reference_values):
+        if not isinstance(reference_values, list) or any(
+            not isinstance(value, str) or value not in references for value in reference_values
+        ):
             errors.append(f"{prefix} expected.references contains an unknown reference")
-        if isinstance(workflow_values, list) and all(value in workflow_ids for value in workflow_values):
+        if isinstance(workflow_values, list) and all(
+            isinstance(value, str) and value in workflow_ids for value in workflow_values
+        ):
             expected_references = [workflow_references[value] for value in workflow_values]
             if reference_values != expected_references:
                 errors.append(f"{prefix} expected references do not correspond to workflow_ids")
         if not isinstance(topology_values, list) or not topology_values or any(
-            value not in CANONICAL_PRIMITIVES for value in topology_values
+            not isinstance(value, str) or value not in CANONICAL_PRIMITIVES for value in topology_values
         ):
             errors.append(f"{prefix} expected.topology must contain only canonical primitives")
-        if expected.get("status") not in ROUTE_STATUSES:
+        elif (
+            expected.get("status") == "routed"
+            and isinstance(workflow_values, list)
+            and all(isinstance(value, str) and value in workflow_ids for value in workflow_values)
+        ):
+            required_topology = (
+                set().union(*(workflow_topologies.get(value, set()) for value in workflow_values))
+                if workflow_values
+                else {"ROUTE_ONE"}
+            )
+            if set(topology_values) != required_topology:
+                errors.append(
+                    f"{prefix} expected.topology does not match the selected workflow topology: "
+                    f"expected {', '.join(sorted(required_topology))}"
+                )
+        status = expected.get("status")
+        if not isinstance(status, str) or status not in ROUTE_STATUSES:
             errors.append(f"{prefix} expected.status is not a known route status")
         if not isinstance(expected.get("behavior"), str) or not expected["behavior"].strip():
             errors.append(f"{prefix} expected.behavior must be nonempty")
+        decision = expected.get("decision")
+        if not isinstance(decision, dict):
+            errors.append(f"{prefix} expected.decision must be an object")
+        else:
+            decision_required = {"reason", "authority_status", "host_mode", "fallback"}
+            decision_missing = decision_required - set(decision)
+            if decision_missing:
+                errors.append(f"{prefix} expected.decision missing fields: {', '.join(sorted(decision_missing))}")
+            if not isinstance(decision.get("reason"), str) or not decision["reason"].strip():
+                errors.append(f"{prefix} expected.decision.reason must be nonempty")
+            authority_status = decision.get("authority_status")
+            if not isinstance(authority_status, str) or authority_status not in AUTHORITY_STATUSES:
+                errors.append(f"{prefix} expected.decision.authority_status is invalid")
+            host_mode = decision.get("host_mode")
+            fallback = decision.get("fallback")
+            if not isinstance(host_mode, str) or host_mode not in HOST_FALLBACKS:
+                errors.append(f"{prefix} expected.decision.host_mode is invalid")
+            elif not isinstance(fallback, str) or fallback not in HOST_FALLBACKS[host_mode]:
+                errors.append(f"{prefix} expected.decision fallback is invalid for host_mode {host_mode}")
 
     if len(scenario_ids) != len(set(scenario_ids)):
         errors.append(f"{label}: duplicate scenario ID")
@@ -509,11 +717,34 @@ def validate(root: Path) -> list[str]:
     for row, contract, label in contracts:
         _validate_contract(contract, row, label, errors)
 
+    workflow_topologies: dict[str, set[str]] = {}
+    for _, contract, _ in contracts:
+        workflow_id = contract.get("id")
+        topology = contract.get("topology")
+        if not isinstance(workflow_id, str) or not isinstance(topology, str):
+            continue
+        try:
+            tokens = _parse_topology(topology)
+        except ValueError:
+            continue
+        regions = contract.get("topology_regions")
+        conditional: set[str] = set()
+        if isinstance(regions, list):
+            conditional = {
+                region["primitive"]
+                for region in regions
+                if isinstance(region, dict)
+                and isinstance(region.get("primitive"), str)
+                and isinstance(region.get("activation_condition"), str)
+            }
+        workflow_topologies[workflow_id] = tokens - conditional
+
     _validate_scenarios(
         root / "references" / "workflow-scenarios.json",
         root,
         catalog_version,
         workflow_references,
+        workflow_topologies,
         errors,
     )
     return errors

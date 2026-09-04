@@ -95,6 +95,36 @@ class WorkflowValidationTests(unittest.TestCase):
             "controller must be one of",
         )
 
+    def test_non_string_contract_enums_fail_cleanly(self):
+        cases = [
+            (
+                lambda contract: contract.__setitem__("controller", {}),
+                "controller must be one of",
+            ),
+            (
+                lambda contract: contract["edges"][0].__setitem__("kind", {}),
+                "kind must be one of",
+            ),
+            (
+                lambda contract: contract["topology_regions"][0].__setitem__("primitive", {}),
+                "has an invalid primitive",
+            ),
+            (
+                lambda contract: next(
+                    region for region in contract["topology_regions"] if region["primitive"] == "PARALLEL_SECTION"
+                ).__setitem__("join_mode", {}),
+                "join_mode must be one of",
+            ),
+        ]
+        for mutation, message in cases:
+            with self.subTest(message=message):
+                self.assert_invalid(
+                    lambda root, mutation=mutation: self.mutate_contract(
+                        root, "references/workflow-software-change.md", mutation
+                    ),
+                    message,
+                )
+
     def test_malformed_topology_fails(self):
         self.assert_invalid(
             lambda root: self.mutate_contract(
@@ -112,6 +142,56 @@ class WorkflowValidationTests(unittest.TestCase):
         self.assert_invalid(
             lambda root: self.mutate_contract(root, "references/workflow-software-change.md", change),
             "dangling edge",
+        )
+
+    def test_invalid_edge_kind_fails(self):
+        def change(contract):
+            contract["edges"][0]["kind"] = "message"
+
+        self.assert_invalid(
+            lambda root: self.mutate_contract(root, "references/workflow-software-change.md", change),
+            "kind must be one of",
+        )
+
+    def test_missing_topology_region_fails(self):
+        def change(contract):
+            contract["topology_regions"] = [
+                region for region in contract["topology_regions"] if region["primitive"] != "REVIEW_LOOP"
+            ]
+
+        self.assert_invalid(
+            lambda root: self.mutate_contract(root, "references/workflow-software-change.md", change),
+            "topology primitives missing regions: REVIEW_LOOP",
+        )
+
+    def test_unknown_parallel_join_fails(self):
+        def change(contract):
+            region = next(item for item in contract["topology_regions"] if item["primitive"] == "PARALLEL_SECTION")
+            region["join_task"] = "missing_task"
+
+        self.assert_invalid(
+            lambda root: self.mutate_contract(root, "references/workflow-software-change.md", change),
+            "has an unknown join_task",
+        )
+
+    def test_review_exit_must_be_outside_region(self):
+        def change(contract):
+            region = next(item for item in contract["topology_regions"] if item["primitive"] == "REVIEW_LOOP")
+            region["exit_task"] = region["task_ids"][-1]
+
+        self.assert_invalid(
+            lambda root: self.mutate_contract(root, "references/workflow-software-change.md", change),
+            "exit_task must be outside the review region",
+        )
+
+    def test_human_gate_requires_activation_condition(self):
+        def change(contract):
+            region = next(item for item in contract["topology_regions"] if item["primitive"] == "HUMAN_GATE")
+            del region["activation_condition"]
+
+        self.assert_invalid(
+            lambda root: self.mutate_contract(root, "references/workflow-software-change.md", change),
+            "must declare activation_condition",
         )
 
     def test_cycle_fails(self):
@@ -148,6 +228,63 @@ class WorkflowValidationTests(unittest.TestCase):
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
         self.assert_invalid(mutation, "expected references do not correspond to workflow_ids")
+
+    def test_missing_scenario_decision_fails(self):
+        def mutation(root: Path) -> None:
+            path = root / "references" / "workflow-scenarios.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            del data["scenarios"][0]["expected"]["decision"]
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        self.assert_invalid(mutation, "expected missing fields: decision")
+
+    def test_invalid_scenario_authority_fails(self):
+        def mutation(root: Path) -> None:
+            path = root / "references" / "workflow-scenarios.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["scenarios"][0]["expected"]["decision"]["authority_status"] = "granted_by_router"
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        self.assert_invalid(mutation, "expected.decision.authority_status is invalid")
+
+    def test_routed_scenario_topology_must_match_workflow(self):
+        def mutation(root: Path) -> None:
+            path = root / "references" / "workflow-scenarios.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            scenario = next(item for item in data["scenarios"] if item["id"] == "software-change-positive")
+            scenario["expected"]["topology"] = ["DIRECT"]
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        self.assert_invalid(mutation, "expected.topology does not match the selected workflow topology")
+
+    def test_invalid_host_mode_fails(self):
+        def mutation(root: Path) -> None:
+            path = root / "references" / "workflow-scenarios.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["scenarios"][0]["expected"]["decision"]["host_mode"] = "telepathic"
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        self.assert_invalid(mutation, "expected.decision.host_mode is invalid")
+
+    def test_non_string_scenario_enums_fail_cleanly(self):
+        cases = [
+            ("status", "expected.status is not a known route status"),
+            ("authority_status", "expected.decision.authority_status is invalid"),
+            ("host_mode", "expected.decision.host_mode is invalid"),
+        ]
+        for field, message in cases:
+            def mutation(root: Path, field=field) -> None:
+                path = root / "references" / "workflow-scenarios.json"
+                data = json.loads(path.read_text(encoding="utf-8"))
+                expected = data["scenarios"][0]["expected"]
+                if field == "status":
+                    expected[field] = {}
+                else:
+                    expected["decision"][field] = {}
+                path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+            with self.subTest(field=field):
+                self.assert_invalid(mutation, message)
 
 
 if __name__ == "__main__":

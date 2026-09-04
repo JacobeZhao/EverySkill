@@ -1,6 +1,6 @@
 {
-  "schema_version": "1",
-  "catalog_version": "1",
+  "schema_version": "2",
+  "catalog_version": "2",
   "scenarios": [
     {
       "id": "direct-fast-path",
@@ -8,7 +8,7 @@
       "request": "Explain the supplied one-line constant.",
       "kind": "coverage",
       "coverage": ["direct-fast-path"],
-      "expected": {"workflow_ids": [], "references": [], "topology": ["DIRECT"], "status": "core_direct", "behavior": "Skip workflow loading."}
+      "expected": {"workflow_ids": [], "references": [], "topology": ["DIRECT"], "status": "core_direct", "behavior": "Skip workflow loading.", "decision": {"reason": "One atomic outcome needs no specialist or decomposition.", "authority_status": "sufficient", "host_mode": "full", "fallback": "none"}}
     },
     {
       "id": "route-one-fast-path",
@@ -16,16 +16,16 @@
       "request": "Use the named document skill to read this document.",
       "kind": "coverage",
       "coverage": ["route-one-fast-path"],
-      "expected": {"workflow_ids": [], "references": [], "topology": ["ROUTE_ONE"], "status": "routed", "behavior": "Route only to the explicit specialist."}
+      "expected": {"workflow_ids": [], "references": [], "topology": ["ROUTE_ONE"], "status": "routed", "behavior": "Route only to the explicit specialist.", "decision": {"reason": "One visible specialist owns the complete outcome.", "authority_status": "sufficient", "host_mode": "full", "fallback": "none"}}
     },
     {
       "id": "software-change-positive",
       "description": "An authorized implementation with tests uses the software workflow.",
       "request": "Implement the approved parser change and add regression tests.",
       "kind": "positive",
-      "coverage": [],
+      "coverage": ["sequential-dependency", "parallel-independence", "review-loop"],
       "positive_for": "software-change",
-      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Bound scope, implement, review, verify, and report."}
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Bound scope, implement, review, verify, and report.", "decision": {"reason": "Authorized mutation has dependent stages, independent exploration, an authority checkpoint, and bounded review.", "authority_status": "sufficient", "host_mode": "full", "fallback": "none"}}
     },
     {
       "id": "software-change-near-miss",
@@ -34,16 +34,16 @@
       "kind": "near_miss",
       "coverage": ["read-only-mode"],
       "near_miss_for": "software-change",
-      "expected": {"workflow_ids": ["diagnosis"], "references": ["references/workflow-diagnosis.md"], "topology": ["SEQUENTIAL", "PARALLEL_SAMPLE", "PARALLEL_SECTION"], "status": "routed", "behavior": "Keep investigation read-only."}
+      "expected": {"workflow_ids": ["diagnosis"], "references": ["references/workflow-diagnosis.md"], "topology": ["SEQUENTIAL", "PARALLEL_SAMPLE", "PARALLEL_SECTION"], "status": "routed", "behavior": "Keep investigation read-only.", "decision": {"reason": "Cause finding requires independent hypotheses and evidence while preserving read-only authority.", "authority_status": "sufficient", "host_mode": "full", "fallback": "none"}}
     },
     {
       "id": "diagnosis-positive",
       "description": "An evidence-backed causal explanation uses diagnosis.",
       "request": "Diagnose why requests intermittently time out without changing state.",
       "kind": "positive",
-      "coverage": [],
+      "coverage": ["parallel-sample"],
       "positive_for": "diagnosis",
-      "expected": {"workflow_ids": ["diagnosis"], "references": ["references/workflow-diagnosis.md"], "topology": ["SEQUENTIAL", "PARALLEL_SAMPLE", "PARALLEL_SECTION"], "status": "routed", "behavior": "Test distinct hypotheses and preserve uncertainty."}
+      "expected": {"workflow_ids": ["diagnosis"], "references": ["references/workflow-diagnosis.md"], "topology": ["SEQUENTIAL", "PARALLEL_SAMPLE", "PARALLEL_SECTION"], "status": "routed", "behavior": "Test distinct hypotheses and preserve uncertainty.", "decision": {"reason": "Multiple falsifiable candidates can independently improve causal confidence.", "authority_status": "sufficient", "host_mode": "full", "fallback": "none"}}
     },
     {
       "id": "diagnosis-near-miss",
@@ -52,7 +52,7 @@
       "kind": "near_miss",
       "coverage": [],
       "near_miss_for": "diagnosis",
-      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Use the authorized change workflow."}
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Use the authorized change workflow.", "decision": {"reason": "The cause is known and the requested deliverable is an authorized repair.", "authority_status": "sufficient", "host_mode": "full", "fallback": "none"}}
     },
     {
       "id": "research-decision-positive",
@@ -61,7 +61,7 @@
       "kind": "positive",
       "coverage": [],
       "positive_for": "research-decision",
-      "expected": {"workflow_ids": ["research-decision"], "references": ["references/workflow-research-decision.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Normalize evidence and calibrate the recommendation."}
+      "expected": {"workflow_ids": ["research-decision"], "references": ["references/workflow-research-decision.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Normalize evidence and calibrate the recommendation.", "decision": {"reason": "Independent evidence lanes can be normalized before a bounded decision review.", "authority_status": "sufficient", "host_mode": "full", "fallback": "none"}}
     },
     {
       "id": "research-decision-near-miss",
@@ -70,7 +70,7 @@
       "kind": "near_miss",
       "coverage": ["research-then-artifact"],
       "near_miss_for": "research-decision",
-      "expected": {"workflow_ids": ["artifact-creation"], "references": ["references/workflow-artifact-creation.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Treat research as an artifact-creation stage."}
+      "expected": {"workflow_ids": ["artifact-creation"], "references": ["references/workflow-artifact-creation.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Treat research as an artifact-creation stage.", "decision": {"reason": "Research supports the requested artifact and does not become a separate deliverable.", "authority_status": "sufficient", "host_mode": "full", "fallback": "none"}}
     },
     {
       "id": "artifact-creation-positive",
@@ -79,7 +79,7 @@
       "kind": "positive",
       "coverage": [],
       "positive_for": "artifact-creation",
-      "expected": {"workflow_ids": ["artifact-creation"], "references": ["references/workflow-artifact-creation.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Brief, create, render, inspect, revise, and report."}
+      "expected": {"workflow_ids": ["artifact-creation"], "references": ["references/workflow-artifact-creation.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Brief, create, render, inspect, revise, and report.", "decision": {"reason": "A substantial artifact needs parallel preparation and bounded inspection-driven revision.", "authority_status": "sufficient", "host_mode": "full", "fallback": "none"}}
     },
     {
       "id": "artifact-creation-near-miss",
@@ -88,7 +88,7 @@
       "kind": "near_miss",
       "coverage": [],
       "near_miss_for": "artifact-creation",
-      "expected": {"workflow_ids": [], "references": [], "topology": ["ROUTE_ONE"], "status": "routed", "behavior": "Use the owning specialist without loading a workflow."}
+      "expected": {"workflow_ids": [], "references": [], "topology": ["ROUTE_ONE"], "status": "routed", "behavior": "Use the owning specialist without loading a workflow.", "decision": {"reason": "A narrow artifact operation has one complete specialist owner.", "authority_status": "sufficient", "host_mode": "full", "fallback": "none"}}
     },
     {
       "id": "diagnose-then-fix",
@@ -96,7 +96,7 @@
       "request": "Find the cause, then implement and verify the authorized fix.",
       "kind": "coverage",
       "coverage": ["diagnose-then-fix"],
-      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Use one software workflow with diagnosis as a stage."}
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Use one software workflow with diagnosis as a stage.", "decision": {"reason": "Diagnosis is a dependency of one authorized software deliverable.", "authority_status": "sufficient", "host_mode": "full", "fallback": "none"}}
     },
     {
       "id": "software-plus-documentation",
@@ -104,7 +104,7 @@
       "request": "Implement the feature and update its usage documentation.",
       "kind": "coverage",
       "coverage": ["software-plus-documentation"],
-      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Treat supporting documentation as part of the software deliverable."}
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Treat supporting documentation as part of the software deliverable.", "decision": {"reason": "Documentation is supporting work inside one software outcome.", "authority_status": "sufficient", "host_mode": "full", "fallback": "none"}}
     },
     {
       "id": "distinct-deliverables-composition",
@@ -112,7 +112,7 @@
       "request": "Ship the code change and separately deliver a polished executive PDF with its own acceptance criteria.",
       "kind": "coverage",
       "coverage": ["two-distinct-deliverables-composition"],
-      "expected": {"workflow_ids": ["software-change", "artifact-creation"], "references": ["references/workflow-software-change.md", "references/workflow-artifact-creation.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Compose distinct lead workflows through the intent DAG and explicit join."}
+      "expected": {"workflow_ids": ["software-change", "artifact-creation"], "references": ["references/workflow-software-change.md", "references/workflow-artifact-creation.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Compose distinct lead workflows through the intent DAG and explicit join.", "decision": {"reason": "Two independently accepted deliverables require separate workflow owners and an explicit join.", "authority_status": "sufficient", "host_mode": "full", "fallback": "none"}}
     },
     {
       "id": "explicit-skill-dominance",
@@ -120,7 +120,7 @@
       "request": "Use the explicitly named PDF skill to create the report.",
       "kind": "coverage",
       "coverage": ["explicit-skill-dominance"],
-      "expected": {"workflow_ids": ["artifact-creation"], "references": ["references/workflow-artifact-creation.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Preserve explicit skill ownership inside the selected workflow."}
+      "expected": {"workflow_ids": ["artifact-creation"], "references": ["references/workflow-artifact-creation.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Preserve explicit skill ownership inside the selected workflow.", "decision": {"reason": "Explicit compatible skill ownership dominates implicit candidates.", "authority_status": "sufficient", "host_mode": "full", "fallback": "none"}}
     },
     {
       "id": "missing-capability",
@@ -128,7 +128,7 @@
       "request": "Create an artifact in a format for which no visible capability exists.",
       "kind": "coverage",
       "coverage": ["missing-capability"],
-      "expected": {"workflow_ids": ["artifact-creation"], "references": ["references/workflow-artifact-creation.md"], "topology": ["HUMAN_GATE"], "status": "blocked", "behavior": "Use a safe fallback, clarify, or block without simulating the capability."}
+      "expected": {"workflow_ids": ["artifact-creation"], "references": ["references/workflow-artifact-creation.md"], "topology": ["DIRECT"], "status": "blocked", "behavior": "Use a safe fallback, clarify, or block without simulating the capability.", "decision": {"reason": "The required artifact capability is unavailable and no human answer can supply it.", "authority_status": "unknown", "host_mode": "full", "fallback": "block_without_simulation"}}
     },
     {
       "id": "worker-partial-failure",
@@ -136,7 +136,7 @@
       "request": "One research worker failed while other lanes returned useful evidence.",
       "kind": "coverage",
       "coverage": ["worker-partial-failure"],
-      "expected": {"workflow_ids": ["research-decision"], "references": ["references/workflow-research-decision.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Continue only if useful and preserve the failed lane and affected criteria."}
+      "expected": {"workflow_ids": ["research-decision"], "references": ["references/workflow-research-decision.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Continue only if useful and preserve the failed lane and affected criteria.", "decision": {"reason": "An all-settled join can retain useful evidence and expose the failed lane.", "authority_status": "sufficient", "host_mode": "full", "fallback": "partial_result"}}
     },
     {
       "id": "budget-stop",
@@ -144,7 +144,7 @@
       "request": "The selected workflow has exhausted its branch budget.",
       "kind": "coverage",
       "coverage": ["budget-stop"],
-      "expected": {"workflow_ids": ["diagnosis"], "references": ["references/workflow-diagnosis.md"], "topology": ["SEQUENTIAL", "PARALLEL_SAMPLE", "PARALLEL_SECTION"], "status": "failed", "behavior": "Stop and report the evidence collected within budget."}
+      "expected": {"workflow_ids": ["diagnosis"], "references": ["references/workflow-diagnosis.md"], "topology": ["SEQUENTIAL", "PARALLEL_SAMPLE", "PARALLEL_SECTION"], "status": "failed", "behavior": "Stop and report the evidence collected within budget.", "decision": {"reason": "The declared branch budget is exhausted.", "authority_status": "sufficient", "host_mode": "full", "fallback": "stop_with_collected_evidence"}}
     },
     {
       "id": "no-progress-stop",
@@ -152,15 +152,15 @@
       "request": "The last review round produced no material improvement.",
       "kind": "coverage",
       "coverage": ["no-progress-stop"],
-      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["REVIEW_LOOP"], "status": "failed", "behavior": "Stop the loop and report unresolved findings."}
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["REVIEW_LOOP"], "status": "failed", "behavior": "Stop the loop and report unresolved findings.", "decision": {"reason": "The bounded review region reached its no-progress exit.", "authority_status": "sufficient", "host_mode": "full", "fallback": "stop_with_unresolved_findings"}}
     },
     {
       "id": "missing-authority",
       "description": "Missing mutation authority blocks before action.",
       "request": "Apply a software change without any stated mutation authority.",
       "kind": "coverage",
-      "coverage": ["missing-authority"],
-      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["HUMAN_GATE"], "status": "blocked", "behavior": "Stop at the authority gate with AUTHORITY_REQUIRED."}
+      "coverage": ["missing-authority", "human-gate"],
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["HUMAN_GATE"], "status": "blocked", "behavior": "Stop at the authority gate with AUTHORITY_REQUIRED.", "decision": {"reason": "A human answer can supply the missing mutation authority.", "authority_status": "missing", "host_mode": "full", "fallback": "wait_for_authority"}}
     },
     {
       "id": "forbidden-authority",
@@ -168,7 +168,7 @@
       "request": "Modify a protected path that higher-priority instructions forbid changing.",
       "kind": "coverage",
       "coverage": ["forbidden-authority"],
-      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["DIRECT"], "status": "blocked", "behavior": "Block with AUTHORITY_FORBIDDEN before mutation; a human gate cannot cure a prohibition."}
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["DIRECT"], "status": "blocked", "behavior": "Block with AUTHORITY_FORBIDDEN before mutation; a human gate cannot cure a prohibition.", "decision": {"reason": "Higher-priority forbidden authority cannot be resolved by workflow selection.", "authority_status": "forbidden", "host_mode": "full", "fallback": "block_forbidden"}}
     },
     {
       "id": "stale-workflow-marker",
@@ -176,7 +176,7 @@
       "request": "Continue from a packet whose workflow catalog marker no longer matches when rebuilding inputs are unavailable.",
       "kind": "coverage",
       "coverage": ["stale-workflow-marker"],
-      "expected": {"workflow_ids": ["research-decision"], "references": ["references/workflow-research-decision.md"], "topology": ["DIRECT"], "status": "blocked", "behavior": "Rebuild before handoff or stop with STALE_PACKET if rebuilding is unavailable."}
+      "expected": {"workflow_ids": ["research-decision"], "references": ["references/workflow-research-decision.md"], "topology": ["DIRECT"], "status": "blocked", "behavior": "Rebuild before handoff or stop with STALE_PACKET if rebuilding is unavailable.", "decision": {"reason": "The workflow catalog freshness marker no longer matches.", "authority_status": "sufficient", "host_mode": "full", "fallback": "rebuild_or_block"}}
     },
     {
       "id": "v1-incompatible",
@@ -184,7 +184,7 @@
       "request": "Resume using an everyskill.route/v1 packet when the latest canonical request and current authority or catalog inputs are unavailable for rebuilding.",
       "kind": "coverage",
       "coverage": ["v1-incompatible"],
-      "expected": {"workflow_ids": [], "references": [], "topology": ["DIRECT"], "status": "blocked", "behavior": "Reject incompatible packet semantics."}
+      "expected": {"workflow_ids": [], "references": [], "topology": ["DIRECT"], "status": "blocked", "behavior": "Reject incompatible packet semantics.", "decision": {"reason": "A v1 packet lacks required v2 freshness and orchestration semantics.", "authority_status": "unknown", "host_mode": "full", "fallback": "reject_incompatible_packet"}}
     },
     {
       "id": "v1-rebuild",
@@ -192,7 +192,31 @@
       "request": "For the currently authorized request to implement the parser change and regression tests, rebuild the old v1 packet from the current request, authority, and catalogs.",
       "kind": "coverage",
       "coverage": ["v1-rebuild"],
-      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Rebuild v2 and then continue from current truth sources."}
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Rebuild v2 and then continue from current truth sources.", "decision": {"reason": "Current request, authority, and catalogs are available to rebuild a fresh v2 packet.", "authority_status": "sufficient", "host_mode": "full", "fallback": "rebuild_v2"}}
+    },
+    {
+      "id": "host-parallel-fallback",
+      "description": "A serial-only host preserves independent branch semantics without claiming concurrent execution.",
+      "request": "Compare alternatives using independent evidence lanes on a host that cannot execute in parallel.",
+      "kind": "coverage",
+      "coverage": ["host-parallel-fallback"],
+      "expected": {"workflow_ids": ["research-decision"], "references": ["references/workflow-research-decision.md"], "topology": ["SEQUENTIAL", "PARALLEL_SECTION", "REVIEW_LOOP"], "status": "routed", "behavior": "Execute eligible evidence lanes serially from the same immutable frame and report the lost latency benefit.", "decision": {"reason": "The logical branches remain independent even though the host cannot run them concurrently.", "authority_status": "sufficient", "host_mode": "serial_only", "fallback": "serialize_parallel_regions"}}
+    },
+    {
+      "id": "host-single-agent-fallback",
+      "description": "A single-agent host isolates task contexts while following the proposed graph sequentially.",
+      "request": "Diagnose the issue with independent hypotheses when only one Agent is available.",
+      "kind": "coverage",
+      "coverage": ["host-single-agent-fallback"],
+      "expected": {"workflow_ids": ["diagnosis"], "references": ["references/workflow-diagnosis.md"], "topology": ["SEQUENTIAL", "PARALLEL_SAMPLE", "PARALLEL_SECTION"], "status": "routed", "behavior": "Use one Agent with isolated hypothesis contexts and sequential branch execution.", "decision": {"reason": "Agent count changes execution mode but not the required independence of evidence lanes.", "authority_status": "sufficient", "host_mode": "single_agent", "fallback": "isolated_sequential_tasks"}}
+    },
+    {
+      "id": "host-no-human-gate",
+      "description": "A host without resumable human gates remains blocked when authority is unresolved.",
+      "request": "Apply a change requiring owner approval on a host that cannot pause and resume after human input.",
+      "kind": "coverage",
+      "coverage": ["no-human-gate-fallback"],
+      "expected": {"workflow_ids": ["software-change"], "references": ["references/workflow-software-change.md"], "topology": ["HUMAN_GATE"], "status": "blocked", "behavior": "Return the exact unresolved authority decision and do not start mutation.", "decision": {"reason": "The host cannot safely resume the conditional-authority gate.", "authority_status": "conditional", "host_mode": "no_human_gate", "fallback": "block_with_required_decision"}}
     }
   ]
 }

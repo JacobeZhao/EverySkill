@@ -6,9 +6,9 @@ The coordinator keeps the change bounded to the authorized objective, gives each
 ```json
 {
   "id": "software-change",
-  "version": "1",
+  "version": "2",
   "controller": "hybrid",
-  "topology": "SEQUENTIAL(PARALLEL_SECTION,REVIEW_LOOP)",
+  "topology": "SEQUENTIAL(PARALLEL_SECTION,HUMAN_GATE,REVIEW_LOOP)",
   "tasks": [
     {
       "id": "scope",
@@ -92,6 +92,37 @@ The coordinator keeps the change bounded to the authorized objective, gives each
     {"from": "review", "to": "revise", "kind": "data"},
     {"from": "revise", "to": "verify", "kind": "data"},
     {"from": "verify", "to": "report", "kind": "data"}
+  ],
+  "topology_regions": [
+    {
+      "id": "main",
+      "primitive": "SEQUENTIAL",
+      "task_ids": ["scope", "explore_implementation", "explore_verification", "plan", "authority_gate", "implement", "review", "revise", "verify", "report"]
+    },
+    {
+      "id": "exploration",
+      "primitive": "PARALLEL_SECTION",
+      "branches": [["explore_implementation"], ["explore_verification"]],
+      "join_task": "plan",
+      "join_mode": "all_settled",
+      "failure_mode": "preserve"
+    },
+    {
+      "id": "mutation_authority",
+      "primitive": "HUMAN_GATE",
+      "task_ids": ["authority_gate"],
+      "activation_condition": "Activate only when authority is conditional, missing, or unknown and a human answer can resolve it; otherwise continue or block without a gate.",
+      "resume_task": "implement",
+      "blocked_status": "blocked"
+    },
+    {
+      "id": "review_repair",
+      "primitive": "REVIEW_LOOP",
+      "task_ids": ["review", "revise"],
+      "exit_task": "verify",
+      "max_rounds": 2,
+      "exit_conditions": ["pass", "no_material_progress", "budget_exhausted"]
+    }
   ],
   "join_policy": {
     "exploration": "Wait for both exploration branches when available; if one fails, continue only when the surviving evidence is sufficient and record the missing branch.",
