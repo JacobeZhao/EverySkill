@@ -5,105 +5,63 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from collections import deque
 from pathlib import Path, PurePosixPath
 
-from evaluate_behavior import validate_case_suite
+from evaluate_behavior import validate_case_suite, validate_reviews
+from validation_policy import load_validation_policy
 
 
-REQUIRED_CONTRACT_FIELDS = {
-    "id",
-    "version",
-    "controller",
-    "topology",
-    "topology_regions",
-    "tasks",
-    "edges",
-    "join_policy",
-    "context_policy",
-    "budget",
-    "stop_conditions",
-    "failure_policy",
-    "verification",
-    "output",
-}
-CANONICAL_PRIMITIVES = {
-    "DIRECT",
-    "ROUTE_ONE",
-    "HANDOFF",
-    "SEQUENTIAL",
-    "PARALLEL_SECTION",
-    "PARALLEL_SAMPLE",
-    "ORCHESTRATOR_WORKERS",
-    "REVIEW_LOOP",
-    "HUMAN_GATE",
-}
-CONTROLLERS = {"code", "llm", "hybrid"}
-EDGE_KINDS = {"data", "control", "context"}
-JOIN_MODES = {"all", "all_settled", "quorum", "first_acceptable"}
-AUTHORITY_STATUSES = {"sufficient", "conditional", "missing", "forbidden", "unknown"}
-HOST_FALLBACKS = {
-    "full": {
-        "none",
-        "block_without_simulation",
-        "partial_result",
-        "stop_with_collected_evidence",
-        "stop_with_unresolved_findings",
-        "wait_for_authority",
-        "block_forbidden",
-        "rebuild_or_block",
-        "reject_incompatible_packet",
-        "rebuild_v2",
-    },
-    "serial_only": {"serialize_parallel_regions"},
-    "single_agent": {"isolated_sequential_tasks"},
-    "no_human_gate": {"block_with_required_decision"},
-}
-ROUTE_STATUSES = {
-    "core_direct",
-    "routed",
-    "clarification_required",
-    "blocked",
-    "failed",
-}
-BUDGET_LIMITS = {
-    "max_workers": 4,
-    "max_parallel_branches": 4,
-    "max_delegation_depth": 2,
-    "max_review_rounds": 2,
-}
-REQUIRED_COVERAGE = {
-    "direct-fast-path",
-    "route-one-fast-path",
-    "diagnose-then-fix",
-    "research-then-artifact",
-    "software-plus-documentation",
-    "two-distinct-deliverables-composition",
-    "explicit-skill-dominance",
-    "read-only-mode",
-    "missing-capability",
-    "worker-partial-failure",
-    "budget-stop",
-    "no-progress-stop",
-    "missing-authority",
-    "forbidden-authority",
-    "stale-workflow-marker",
-    "v1-incompatible",
-    "v1-rebuild",
-    "sequential-dependency",
-    "parallel-independence",
-    "parallel-sample",
-    "review-loop",
-    "human-gate",
-    "host-parallel-fallback",
-    "host-single-agent-fallback",
-    "no-human-gate-fallback",
-}
+REQUIRED_CONTRACT_FIELDS: set[str]
+CANONICAL_PRIMITIVES: set[str]
+CONTROLLERS: set[str]
+EDGE_KINDS: set[str]
+JOIN_MODES: set[str]
+AUTHORITY_STATUSES: set[str]
+HOST_FALLBACKS: dict[str, set[str]]
+ROUTE_STATUSES: set[str]
+BUDGET_BOUNDS: dict[str, dict[str, float]]
+REQUIRED_COVERAGE: set[str]
+SCENARIO_KINDS: set[str]
+SCENARIO_SCHEMA_VERSION: str
+ADVANCED_REQUIRED_PRIMITIVES: set[str]
+WORKER_MAX_DEPTH: int
+REMAINING_BRANCH_POLICIES: set[str]
 CONTRACT_MARKER = "<!-- workflow-contract -->"
 ADVANCED_MARKER = "<!-- advanced-topology-examples -->"
 COMPOSITION_MARKER = "<!-- workflow-composition-examples -->"
+
+
+def _configure_policy(policy: dict[str, object]) -> None:
+    global REQUIRED_CONTRACT_FIELDS, CANONICAL_PRIMITIVES, CONTROLLERS, EDGE_KINDS
+    global JOIN_MODES, AUTHORITY_STATUSES, HOST_FALLBACKS, ROUTE_STATUSES
+    global BUDGET_BOUNDS, REQUIRED_COVERAGE, SCENARIO_KINDS, SCENARIO_SCHEMA_VERSION
+    global ADVANCED_REQUIRED_PRIMITIVES, WORKER_MAX_DEPTH, REMAINING_BRANCH_POLICIES
+    contract = policy["contract"]
+    topology = policy["topology"]
+    routing = policy["routing"]
+    scenarios = policy["scenarios"]
+    REQUIRED_CONTRACT_FIELDS = set(contract["required_fields"])
+    CANONICAL_PRIMITIVES = set(topology["primitives"])
+    CONTROLLERS = set(contract["controllers"])
+    EDGE_KINDS = set(contract["edge_kinds"])
+    JOIN_MODES = set(topology["join_modes"])
+    AUTHORITY_STATUSES = set(routing["authority_statuses"])
+    HOST_FALLBACKS = {key: set(value) for key, value in routing["host_fallbacks"].items()}
+    ROUTE_STATUSES = set(routing["statuses"])
+    BUDGET_BOUNDS = policy["budgets"]["required_caps"]
+    REQUIRED_COVERAGE = set(scenarios["required_coverage"])
+    SCENARIO_KINDS = set(scenarios["kinds"])
+    SCENARIO_SCHEMA_VERSION = scenarios["schema_version"]
+    ADVANCED_REQUIRED_PRIMITIVES = set(topology["advanced_example_required_primitives"])
+    WORKER_MAX_DEPTH = topology["orchestrator_workers"]["max_depth"]
+    REMAINING_BRANCH_POLICIES = set(topology["remaining_branch_policies"])
+
+
+_configure_policy(load_validation_policy(Path(__file__).resolve().parents[1] / "references" / "validation-policy.json"))
 
 
 def _parse_topology(value: str) -> set[str]:
@@ -437,6 +395,10 @@ def _validate_topology_regions(
             if not isinstance(branches, list) or len(branches) < 2:
                 errors.append(f"{prefix} branches must contain at least two branches")
             else:
+                budget = contract.get("budget")
+                branch_budget = budget.get("max_parallel_branches") if isinstance(budget, dict) else None
+                if isinstance(branch_budget, (int, float)) and len(branches) > branch_budget:
+                    errors.append(f"{prefix} branch count exceeds the workflow parallel budget")
                 branch_tasks: list[str] = []
                 for branch_index, branch in enumerate(branches):
                     if not isinstance(branch, list) or not branch or any(
@@ -472,8 +434,8 @@ def _validate_topology_regions(
                     if not isinstance(region.get(field), str) or not region[field].strip():
                         errors.append(f"{prefix} first_acceptable must declare {field}")
                 policy = region.get("remaining_branch_policy")
-                if policy not in {"cancel", "ignore"}:
-                    errors.append(f"{prefix} remaining_branch_policy must be cancel or ignore")
+                if policy not in REMAINING_BRANCH_POLICIES:
+                    errors.append(f"{prefix} remaining_branch_policy must be one of {', '.join(sorted(REMAINING_BRANCH_POLICIES))}")
                 if policy == "cancel" and (
                     not isinstance(region.get("disposable_or_cancellation_evidence"), str)
                     or not region["disposable_or_cancellation_evidence"].strip()
@@ -518,8 +480,8 @@ def _validate_topology_regions(
                     if not isinstance(region.get(field), str) or not region[field].strip():
                         errors.append(f"{prefix} first_acceptable must declare {field}")
                 policy = region.get("remaining_branch_policy")
-                if policy not in {"cancel", "ignore"}:
-                    errors.append(f"{prefix} remaining_branch_policy must be cancel or ignore")
+                if policy not in REMAINING_BRANCH_POLICIES:
+                    errors.append(f"{prefix} remaining_branch_policy must be one of {', '.join(sorted(REMAINING_BRANCH_POLICIES))}")
                 if policy == "cancel" and (
                     not isinstance(region.get("disposable_or_cancellation_evidence"), str)
                     or not region["disposable_or_cancellation_evidence"].strip()
@@ -533,8 +495,8 @@ def _validate_topology_regions(
                 errors.append(f"{prefix} max_workers must be a positive integer")
             elif isinstance(worker_budget, (int, float)) and max_workers > worker_budget:
                 errors.append(f"{prefix} max_workers exceeds the workflow worker budget")
-            if max_depth != 1:
-                errors.append(f"{prefix} max_depth must be exactly 1")
+            if max_depth != WORKER_MAX_DEPTH:
+                errors.append(f"{prefix} max_depth must be exactly {WORKER_MAX_DEPTH}")
             elif isinstance(depth_budget, (int, float)) and max_depth > depth_budget:
                 errors.append(f"{prefix} max_depth exceeds the workflow delegation budget")
             stops = region.get("stop_conditions")
@@ -648,17 +610,20 @@ def _validate_contract(contract: dict[str, object], row: dict[str, str], label: 
         errors.append(f"{label}: budget must be a nonempty object")
     else:
         for name, value in budget.items():
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
                 errors.append(f"{label}: budget cap {name} must be numeric")
             elif value < 0:
                 errors.append(f"{label}: budget cap {name} must not be negative")
-        for name, limit in BUDGET_LIMITS.items():
+        for name, bounds in BUDGET_BOUNDS.items():
             if name not in budget:
                 errors.append(f"{label}: budget missing required cap {name}")
             else:
                 value = budget[name]
-                if isinstance(value, (int, float)) and not isinstance(value, bool) and value > limit:
-                    errors.append(f"{label}: budget cap {name}={value} exceeds limit {limit}")
+                if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+                    if value < bounds["minimum"]:
+                        errors.append(f"{label}: budget cap {name}={value} is below minimum {bounds['minimum']}")
+                    if value > bounds["maximum"]:
+                        errors.append(f"{label}: budget cap {name}={value} exceeds limit {bounds['maximum']}")
 
     structured = ("join_policy", "context_policy", "failure_policy", "verification", "output")
     for field in structured:
@@ -693,8 +658,8 @@ def _validate_scenarios(
         return
     workflow_ids = set(workflow_references)
     references = set(workflow_references.values())
-    if data.get("schema_version") != "2":
-        errors.append(f"{label}: schema_version must be '2'")
+    if data.get("schema_version") != SCENARIO_SCHEMA_VERSION:
+        errors.append(f"{label}: schema_version must be {SCENARIO_SCHEMA_VERSION!r}")
     if str(data.get("catalog_version")) != catalog_version:
         errors.append(f"{label}: catalog_version does not match workflow catalog")
     scenarios = data.get("scenarios")
@@ -725,7 +690,7 @@ def _validate_scenarios(
         for field in ("description", "request"):
             if not isinstance(scenario.get(field), str) or not scenario[field].strip():
                 errors.append(f"{prefix} has an empty {field}")
-        if scenario.get("kind") not in {"positive", "near_miss", "coverage"}:
+        if scenario.get("kind") not in SCENARIO_KINDS:
             errors.append(f"{prefix} has an invalid kind")
         tags = scenario.get("coverage")
         if not isinstance(tags, list) or any(not isinstance(tag, str) or not tag for tag in tags):
@@ -735,6 +700,9 @@ def _validate_scenarios(
         for field, target in (("positive_for", positives), ("near_miss_for", near_misses)):
             value = scenario.get(field)
             if value is not None:
+                required_kind = "positive" if field == "positive_for" else "near_miss"
+                if scenario.get("kind") != required_kind:
+                    errors.append(f"{prefix} {field} requires kind={required_kind!r}")
                 if not isinstance(value, str) or value not in workflow_ids:
                     errors.append(f"{prefix} {field} refers to unknown workflow {value!r}")
                 else:
@@ -815,6 +783,9 @@ def _validate_scenarios(
     missing_coverage = REQUIRED_COVERAGE - coverage
     if missing_coverage:
         errors.append(f"{label}: missing required coverage: {', '.join(sorted(missing_coverage))}")
+    unknown_coverage = coverage - REQUIRED_COVERAGE
+    if unknown_coverage:
+        errors.append(f"{label}: coverage tags absent from validation policy: {', '.join(sorted(unknown_coverage))}")
     if positives != workflow_ids:
         errors.append(f"{label}: every workflow needs a positive scenario; missing {', '.join(sorted(workflow_ids - positives))}")
     if near_misses != workflow_ids:
@@ -858,16 +829,21 @@ def _validate_advanced_examples(path: Path, root: Path, errors: list[str]) -> No
         if not isinstance(budget, dict):
             errors.append(f"{prefix}: budget must be an object")
         else:
-            for name, limit in BUDGET_LIMITS.items():
+            for name, bounds in BUDGET_BOUNDS.items():
                 value = budget.get(name)
-                if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0 or value > limit:
-                    errors.append(f"{prefix}: budget cap {name} must be between 0 and {limit}")
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(value)
+                    or value < bounds["minimum"]
+                    or value > bounds["maximum"]
+                ):
+                    errors.append(f"{prefix}: budget cap {name} must be between {bounds['minimum']} and {bounds['maximum']}")
         _validate_graph(example, prefix, errors)
         _validate_topology_regions(example, tokens, prefix, errors)
     if len(example_ids) != len(set(example_ids)):
         errors.append(f"{label}: duplicate example ID")
-    required = {"HANDOFF", "PARALLEL_SECTION", "PARALLEL_SAMPLE", "ORCHESTRATOR_WORKERS"}
-    missing = required - covered
+    missing = ADVANCED_REQUIRED_PRIMITIVES - covered
     if missing:
         errors.append(f"{label}: missing advanced primitive examples: {', '.join(sorted(missing))}")
 
@@ -1008,6 +984,12 @@ def _validate_compositions(
 def validate(root: Path) -> list[str]:
     root = root.resolve()
     errors: list[str] = []
+    policy_path = root / "references" / "validation-policy.json"
+    try:
+        policy = load_validation_policy(policy_path)
+    except ValueError as exc:
+        return [f"{_relative(policy_path, root)}: {exc}"]
+    _configure_policy(policy)
     skill_path = root / "SKILL.md"
     catalog_path = root / "references" / "workflow-catalog.md"
     catalog_version, rows = _parse_catalog(catalog_path, errors)
@@ -1085,6 +1067,7 @@ def validate(root: Path) -> list[str]:
         errors,
     )
     behavior_path = root / "references" / "behavior-evaluation-cases.json"
+    behavior_data: object = None
     try:
         behavior_data = json.loads(behavior_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -1096,8 +1079,37 @@ def validate(root: Path) -> list[str]:
                 behavior_data,
                 catalog_version=catalog_version,
                 workflow_ids=set(ids),
+                policy=policy,
             )
         )
+    review_path = root / "references" / "behavior-evaluation-reviews.example.json"
+    result_example_path = root / "references" / "behavior-evaluation-results.example.json"
+    try:
+        review_data = json.loads(review_path.read_text(encoding="utf-8"))
+        result_example = json.loads(result_example_path.read_text(encoding="utf-8"))
+        example_run_id = result_example["run"]["run_id"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        errors.append(f"{_relative(review_path, root)}: invalid human review example: {exc}")
+    else:
+        case_records = behavior_data.get("cases", []) if isinstance(behavior_data, dict) else []
+        case_ids = {
+            case["id"]
+            for case in case_records
+            if isinstance(case, dict) and isinstance(case.get("id"), str)
+        }
+        result_trials = result_example.get("trials", []) if isinstance(result_example, dict) else []
+        valid_trials = {
+            (trial.get("case_id"), trial.get("trial_index"))
+            for trial in result_trials
+            if isinstance(trial, dict)
+        }
+        _, review_errors = validate_reviews(
+            review_data,
+            case_ids=case_ids,
+            run_id=example_run_id,
+            valid_trials=valid_trials,
+        )
+        errors.extend(f"{_relative(review_path, root)}: {error}" for error in review_errors)
     return errors
 
 

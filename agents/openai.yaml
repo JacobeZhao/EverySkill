@@ -1,7 +1,7 @@
 interface:
   display_name: "Everyskill"
   short_description: "Adaptively orchestrate agents and skills"
-  default_prompt: "Use $everyskill to classify this request and choose the simplest effective agent and skill orchestration."
+  default_prompt: "Use $everyskill to choose the simplest sufficient route; keep simple requests on the fast path and build a task graph only when coordination materially helps."
 
 policy:
   allow_implicit_invocation: true

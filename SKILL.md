@@ -22,16 +22,22 @@ Choose the simplest sufficient agent and skill orchestration for each request wh
 
 ## Routing State
 
-Move through one state at a time:
+Start with the common prefix:
 
-`intake -> constraint_scan -> intent_graph -> complexity_analysis -> route_selection -> workflow_selection -> orchestration_selection -> packet_synthesis`
+`intake -> constraint_scan`
+
+From there, take the first sufficient branch:
+
+- simple core request: `direct_fast_path -> terminal`;
+- one obvious visible owner with no cross-owner dependency: `single_owner_fast_path -> handoff -> terminal`;
+- otherwise: `intent_graph -> complexity_analysis -> route_selection -> workflow_selection -> orchestration_selection -> packet_synthesis`, then `handoff -> terminal` when delegation occurs.
 
 After packet synthesis, branch explicitly: use `handoff -> terminal` when the selected topology delegates to one or more targets; use `terminal` directly for `core_direct`, `clarification_required`, `blocked`, or `failed` routes.
 
 1. In `intake`, capture the canonical request, objective, constraints, non-goals, requested mode, and explicit authorization.
 2. In `constraint_scan`, identify explicit skills, strong target signals, side effects, dependencies, catalog visibility, and applicable instructions.
-3. In `intent_graph`, split the request into atomic intent nodes and connect their dependencies.
-4. In `complexity_analysis`, score all six axes from observable request evidence.
+3. Before building a graph, test whether `DIRECT` or one straightforward owner completely preserves the outcome, mode, authority, and verification need.
+4. Only for the nontrivial branch, split the request into atomic intent nodes, connect their dependencies, and assess the complexity dimensions that affect coordination.
 5. In `route_selection`, select only visible skills using the priority rules below.
 6. In `workflow_selection`, keep the fast path or select the smallest matching internal workflow by primary requested outcome.
 7. In `orchestration_selection`, instantiate the workflow or choose the controller and simplest topology that provides a material benefit for the intent DAG.
@@ -44,7 +50,7 @@ Invalidate a packet when the latest user intent, request revision, authority, ta
 
 ## Build The Intent DAG
 
-Assign exactly one primary intent class and exactly one primary owner (`skill-name` or `core`) to each atomic node. Give every node its own objective, required output, and dependencies. Add auxiliary skills only for distinct supporting work. Keep multiple user outcomes as separate nodes; do not force a multi-intent request into one leaf.
+Build an intent DAG only when the request has multiple outcomes, real dependencies, owner conflict, shared state, material authority uncertainty, or another reason a fast path is insufficient. Assign exactly one primary intent class and exactly one primary owner (`skill-name` or `core`) to each atomic node. Give every node its own objective, required output, and dependencies. Add auxiliary skills only for distinct supporting work. Keep multiple user outcomes as separate nodes; do not force a multi-intent request into one leaf.
 
 Use these classes:
 
@@ -71,7 +77,7 @@ Attach open labels without creating new intent classes: `domain`, `target_system
 
 ## Analyze Complexity
 
-Score each axis independently as `K0`, `K1`, `K2`, or `K3`. Record short evidence for every non-zero score. Never compute or report an aggregate complexity score.
+For a nontrivial route, assess each axis independently as `K0`, `K1`, `K2`, or `K3`. Record short evidence for every non-zero score that changes decomposition, owner choice, sequencing, context, or verification. Skip this table on the direct and single-owner fast paths. Never compute or report an aggregate complexity score.
 
 | Axis | K0 | K1 | K2 | K3 |
 | --- | --- | --- | --- | --- |
@@ -106,6 +112,8 @@ Prefer one primary owner per node. Use multiple skills only when the DAG contain
 
 Treat the catalog as dynamic and potentially incomplete. Set coverage to `visible`, `possibly_truncated`, or `unknown`. Claim only the best visible match. If a skill is omitted, disabled, unavailable, or disallows implicit invocation, do not simulate it.
 
+On the simple core fast path, do not construct an intent DAG, score all complexity axes, invent identifiers, or load workflow references. On the single-owner fast path, record only the owner, objective, authority boundary, required output, handoff context, and downstream status needed for a safe transfer.
+
 ## Select Internal Workflow
 
 Skip internal workflow loading when `DIRECT` or a straightforward `ROUTE_ONE` can satisfy the request. Otherwise read [references/workflow-catalog.md](references/workflow-catalog.md), choose by primary requested outcome after visible skill ownership is known, and load only the selected workflow reference:
@@ -122,6 +130,8 @@ Each selected workflow must supply bounded tasks and edges, owners, context inpu
 Treat the single JSON block immediately following `<!-- workflow-contract -->` in each workflow reference as the canonical structured contract. Require `id`, `version`, `controller`, `topology`, `tasks`, `edges`, `join_policy`, `context_policy`, `budget`, `stop_conditions`, `failure_policy`, `verification`, and `output`. Keep matching criteria in the catalog and keep surrounding workflow prose explanatory; do not duplicate either source.
 
 When adding or validating workflows, read [references/workflow-scenarios.json](references/workflow-scenarios.json). Do not load scenario fixtures during ordinary request handling.
+
+Treat [the validation policy](references/validation-policy.json) as the machine-readable source for supported values, budget bounds, and required structural coverage. Changing policy cannot implement a new topology semantic handler or grant a host capability.
 
 When authoring a new workflow, use [the workflow template](references/workflow-template.md) and follow [the authoring guide](references/workflow-authoring-guide.md). These are authoring references, not additional runtime workflows.
 
@@ -150,7 +160,7 @@ Before handoff, compare the selected topology with [the host capability contract
 
 ## Create The Route Packet
 
-Use a compact packet internally for a trivial, high-confidence `core` route, but still record `orchestration.topology: DIRECT`. Emit or pass the extended fields only when routing to a skill, handling multiple nodes, resolving uncertainty, or guarding material risk.
+For a trivial, high-confidence core route, record only `orchestration.topology: DIRECT`, `route_status: core_direct`, and the applicable authority/error result; do not synthesize durable-looking packet identifiers. Emit or pass the extended fields only when handling multiple nodes, resolving uncertainty, guarding material risk, or coordinating more than one owner. A straightforward single-owner handoff uses a minimal route note rather than the full packet.
 
 Use [the Route Packet examples](references/route-packet-examples.md) as semantic examples only. Generate identifiers, digests, freshness markers, authority, and execution state from the current request and host; never copy example placeholders as current truth.
 
@@ -197,6 +207,8 @@ Treat handoff as same-context instruction composition, not as a formal skill-to-
 
 When `guided-multi-agent-development` and `continuous-technical-debt-cleanup` are visible, use [the development and debt routing cases](references/development-debt-suite-cases.md) to preserve their ownership boundary. They are visible Skill owners, not aliases for internal workflows. For a combined request, keep their approval, budget, recovery, and completion states separate; serialize shared-worktree writes even when independent read-only discovery can run in parallel.
 
+Use [the real Skill routing cases](references/real-skill-routing-cases.md) when evaluating architecture-to-development or development-to-deployment boundaries. These fixtures constrain routing and authority only; they do not prove the downstream Skill executed correctly.
+
 Do not re-emit `$everyskill`, select it as a target, or rebuild a valid matching v2 packet after `everyskill_applied: true`. Reuse that packet and continue its existing route or handoff. Treat recursion as an error only when a target or skill attempts to select or invoke `everyskill` again for the same revision, creates a cyclic handoff, or no valid consumable packet can break the loop. On successful handoff, set `route_status: routed` and `error_code: NONE`. If the runtime cannot load or apply a selected skill, use `HANDOFF_UNSUPPORTED`. If an explicitly requested skill is not available, use `EXPLICIT_SKILL_UNAVAILABLE`. Do not claim that either skill ran.
 
 ## Fail Safely
@@ -212,3 +224,5 @@ Do not re-emit `$everyskill`, select it as a target, or rebuild a valid matching
 ## Evaluate Behavior
 
 Use [the fresh-agent behavior evaluation protocol](references/behavior-evaluation.md) and its independent [case suite](references/behavior-evaluation-cases.json) only when evaluating or changing this Skill. The repository scorer validates captured results offline; it does not invoke a model. A structural validator pass is not evidence that live routing behavior passed, and missing target Skills leave affected cases `UNRUN` rather than simulated.
+
+For offline maintenance, use the deterministic topology analyzer and structural coverage report described in the README. Their metrics describe configured graphs and fixture coverage only; they do not prove latency improvement, branch independence, model judgment, or downstream execution.

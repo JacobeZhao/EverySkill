@@ -41,6 +41,7 @@ Skill 至少应支持以下决策原语，并允许使用者在工作流契约�
 
 - `DIRECT`：主 Agent 直接处理
 - `ROUTE_ONE`：路由到一个明确的 Skill 或 Agent
+- `HANDOFF`：将后续流程所有权移交给明确的 Skill，同时保留请求和权限边界
 - `SEQUENTIAL`：存在真实依赖的串行阶段
 - `PARALLEL_SECTION`：互相独立的子任务并行执行后汇合
 - `PARALLEL_SAMPLE`：使用多个独立尝试提升判断置信度
@@ -63,7 +64,7 @@ Skill 至少应支持以下决策原语，并允许使用者在工作流契约�
 - 验证标准、冲突处理和最终输出格式
 - 正例、近似误匹配、权限、失败、预算和版本迁移场景
 
-新增工作流应当只需增加目录条目、契约文档和测试场景，并能通过结构校验。
+新增工作流应当只需增加目录条目、契约文档、`SKILL.md` 的渐进披露链接和测试场景，并能通过结构校验，不应要求修改校验器实现。
 
 ## Skill 的职责边界
 
@@ -94,7 +95,13 @@ SKILL.md                         核心路由与编排协议
 references/workflow-catalog.md   工作流匹配目录
 references/workflow-*.md         可替换的工作流契约
 references/workflow-scenarios.json 场景与覆盖规范
+references/validation-policy.json  可配置的结构校验策略
+references/behavior-evaluation-*.json 离线行为评估与人工评审格式
+references/workflow-composition.md 多工作流组合契约
 scripts/validate_workflows.py    配置结构校验
+scripts/topology_analysis.py     图结构指标与候选建议
+scripts/report_coverage.py       确定性结构覆盖报告
+scripts/scaffold_workflow.py     保守的工作流脚手架
 tests/                           校验器回归测试
 ```
 
@@ -110,5 +117,6 @@ tests/                           校验器回归测试
 4. 在相似但意图不同的请求之间保持稳定的工作流选择。
 5. 在缺少能力、权限或新鲜上下文时安全阻塞或降级，而不是虚构执行结果。
 6. 通过结构化契约和场景测试验证新增工作流不会破坏既有路由规则。
+7. 通过确定性的结构指标和覆盖报告发现图、预算和案例缺口，同时明确这些结果不能替代真实 Agent 行为证据。
 
 最终目标不是让每个请求都拆得更复杂，而是让每个请求都获得与其依赖关系、风险和质量要求相匹配的最小充分编排。

@@ -187,6 +187,16 @@ class WorkflowValidationTests(unittest.TestCase):
             "has an unknown join_task",
         )
 
+    def test_parallel_branch_count_must_fit_workflow_budget(self):
+        def change(contract):
+            region = next(item for item in contract["topology_regions"] if item["primitive"] == "PARALLEL_SECTION")
+            contract["budget"]["max_parallel_branches"] = len(region["branches"]) - 1
+
+        self.assert_invalid(
+            lambda root: self.mutate_contract(root, "references/workflow-software-change.md", change),
+            "branch count exceeds the workflow parallel budget",
+        )
+
     def test_review_exit_must_be_outside_region(self):
         def change(contract):
             region = next(item for item in contract["topology_regions"] if item["primitive"] == "REVIEW_LOOP")
@@ -497,6 +507,25 @@ class WorkflowValidationTests(unittest.TestCase):
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
         self.assert_invalid(mutation, "catalog_version does not match workflow catalog")
+
+    def test_workflow_case_links_require_matching_scenario_kind(self):
+        def mutation(root: Path) -> None:
+            path = root / "references" / "workflow-scenarios.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            scenario = next(item for item in data["scenarios"] if "positive_for" in item)
+            scenario["kind"] = "coverage"
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        self.assert_invalid(mutation, "positive_for requires kind='positive'")
+
+    def test_invalid_human_review_example_fails(self):
+        def mutation(root: Path) -> None:
+            path = root / "references" / "behavior-evaluation-reviews.example.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["reviews"][0]["overall"] = "fail"
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        self.assert_invalid(mutation, "overall must equal derived outcome pass")
 
 
 if __name__ == "__main__":

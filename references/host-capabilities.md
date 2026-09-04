@@ -28,6 +28,8 @@ The host should be able to:
 
 Fallback changes execution capability, not task meaning or authority. Never replace missing external capability with simulated success.
 
+The machine-readable host modes and allowed fallback names are maintained in [validation-policy.json](validation-policy.json). Changing those names configures validation only; it does not add the corresponding capability to a host.
+
 ## Capability Record
 
 ```text

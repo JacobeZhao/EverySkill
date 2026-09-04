@@ -8,7 +8,7 @@ Confirm that the outcome is repeated, materially distinct from existing catalog 
 
 1. Write one sentence naming the primary deliverable and its exclusions.
 2. Add a unique ID, version, matching outcome, exclusion, and shallow reference path to `workflow-catalog.md`.
-3. Copy `workflow-template.md` into a new `workflow-<name>.md` file.
+3. Copy `workflow-template.md`, or run `python scripts/scaffold_workflow.py --id <id> --title <title> --output references/workflow-<id>.md`, to create a conservative serial skeleton.
 4. Define tasks before topology. Give every task one objective, owner, required output, and dependencies.
 5. Add one typed edge for every dependency.
 6. Apply `topology-selection.md` and choose the smallest justified primitives.
@@ -17,6 +17,8 @@ Confirm that the outcome is repeated, materially distinct from existing catalog 
 9. Link the workflow directly from `SKILL.md` only when it is part of the supported catalog.
 10. Add one positive case, one near-miss, and every triggered authority, failure, budget, degradation, and version case to `workflow-scenarios.json`.
 11. Run the validator and tests.
+
+Use `--dry-run` to inspect scaffold output. The scaffold never edits the catalog, invents matching prose, or overwrites an existing file. Repository-wide validation enums, budget bounds, and required coverage live in [validation-policy.json](validation-policy.json); a new semantic primitive still requires validator support.
 
 ## Review Questions
 

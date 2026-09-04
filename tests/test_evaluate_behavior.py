@@ -169,6 +169,59 @@ class BehaviorEvaluationTests(unittest.TestCase):
         self.assertTrue(any("sampling must be an object" in error for error in errors))
         self.assertTrue(any("does not match case catalog" in error for error in errors))
 
+    def test_human_review_is_validated_and_kept_separate(self):
+        dimension = {"outcome": "pass", "evidence": "Independent evidence."}
+        reviews = {
+            "schema_version": "1",
+            "run_id": "test-run",
+            "sampling_rule": "Preselect the first trial.",
+            "reviews": [{
+                "case_id": "eval-direct",
+                "trial_index": 1,
+                "reviewer_role": "independent reviewer",
+                "dimensions": {name: copy.deepcopy(dimension) for name in MODULE.REVIEW_DIMENSIONS},
+                "overall": "pass",
+            }],
+        }
+        report, errors = MODULE.validate_reviews(
+            reviews,
+            case_ids={case["id"] for case in self.cases["cases"]},
+            run_id="test-run",
+            valid_trials={("eval-direct", 1)},
+        )
+        self.assertEqual(errors, [])
+        self.assertEqual(report["counts"]["pass"], 1)
+        reviews["reviews"][0]["dimensions"]["node_atomicity"] = {"outcome": "unrun", "reason": "No trace."}
+        self.assertIsNone(MODULE.validate_reviews(
+            reviews,
+            case_ids={"eval-direct"},
+            run_id="test-run",
+            valid_trials={("eval-direct", 1)},
+        )[0])
+
+    def test_human_review_must_reference_an_actual_result_trial(self):
+        dimension = {"outcome": "pass", "evidence": "Independent evidence."}
+        reviews = {
+            "schema_version": "1",
+            "run_id": "test-run",
+            "sampling_rule": "Preselect one trial.",
+            "reviews": [{
+                "case_id": "eval-direct",
+                "trial_index": 999,
+                "reviewer_role": "independent reviewer",
+                "dimensions": {name: copy.deepcopy(dimension) for name in MODULE.REVIEW_DIMENSIONS},
+                "overall": "pass",
+            }],
+        }
+        report, errors = MODULE.validate_reviews(
+            reviews,
+            case_ids={"eval-direct"},
+            run_id="test-run",
+            valid_trials={("eval-direct", 1)},
+        )
+        self.assertIsNone(report)
+        self.assertTrue(any("absent from the evaluation results" in error for error in errors))
+
     def test_cli_exit_codes_distinguish_pass_fail_and_invalid(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

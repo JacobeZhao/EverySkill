@@ -9,14 +9,17 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+from validation_policy import load_validation_policy
 
-CANONICAL_PRIMITIVES = {
-    "DIRECT", "ROUTE_ONE", "HANDOFF", "SEQUENTIAL", "PARALLEL_SECTION",
-    "PARALLEL_SAMPLE", "ORCHESTRATOR_WORKERS", "REVIEW_LOOP", "HUMAN_GATE",
-}
-ROUTE_STATUSES = {"core_direct", "routed", "clarification_required", "blocked", "failed"}
-AUTHORITY_STATUSES = {"sufficient", "conditional", "missing", "forbidden", "unknown"}
-COORDINATION_PRIMITIVES = CANONICAL_PRIMITIVES - {"DIRECT", "ROUTE_ONE"}
+CANONICAL_PRIMITIVES: set[str]
+ROUTE_STATUSES: set[str]
+AUTHORITY_STATUSES: set[str]
+COORDINATION_PRIMITIVES: set[str]
+HOST_FALLBACKS: dict[str, set[str]]
+BEHAVIOR_SCHEMA_VERSION: str
 CASE_ORACLE_FIELDS = {
     "allowed_workflow_sets", "allowed_topology_sets", "allowed_primary_owner_sets",
     "allowed_handoff_orders", "route_status", "error_codes",
@@ -27,6 +30,28 @@ PACKET_FIELDS = {
     "workflow_ids", "topology", "route_status", "error_code", "authority_status",
     "fallback", "primary_owners", "handoff_order", "intent_count",
 }
+REVIEW_DIMENSIONS = {
+    "node_atomicity", "dependency_correctness", "owner_and_output",
+    "context_minimization", "parallel_and_join_justification",
+    "budget_failure_stop_verification",
+}
+
+
+def _configure_policy(policy: dict[str, object]) -> None:
+    global CANONICAL_PRIMITIVES, ROUTE_STATUSES, AUTHORITY_STATUSES
+    global COORDINATION_PRIMITIVES, HOST_FALLBACKS, BEHAVIOR_SCHEMA_VERSION
+    topology = policy["topology"]
+    routing = policy["routing"]
+    CANONICAL_PRIMITIVES = set(topology["primitives"])
+    COORDINATION_PRIMITIVES = set(topology["coordination_primitives"])
+    ROUTE_STATUSES = set(routing["statuses"])
+    AUTHORITY_STATUSES = set(routing["authority_statuses"])
+    HOST_FALLBACKS = {key: set(value) for key, value in routing["host_fallbacks"].items()}
+    BEHAVIOR_SCHEMA_VERSION = policy["behavior_evaluation"]["schema_version"]
+
+
+DEFAULT_POLICY_PATH = Path(__file__).resolve().parents[1] / "references" / "validation-policy.json"
+_configure_policy(load_validation_policy(DEFAULT_POLICY_PATH))
 
 
 def _string_list(value: object) -> bool:
@@ -55,12 +80,15 @@ def validate_case_suite(
     *,
     catalog_version: str | None = None,
     workflow_ids: set[str] | None = None,
+    policy: dict[str, object] | None = None,
 ) -> list[str]:
+    if policy is not None:
+        _configure_policy(policy)
     errors: list[str] = []
     if not isinstance(data, dict):
         return ["behavior evaluation suite must be an object"]
-    if data.get("schema_version") != "1":
-        errors.append("behavior evaluation schema_version must be '1'")
+    if data.get("schema_version") != BEHAVIOR_SCHEMA_VERSION:
+        errors.append(f"behavior evaluation schema_version must be {BEHAVIOR_SCHEMA_VERSION!r}")
     if catalog_version is not None and str(data.get("catalog_version")) != catalog_version:
         errors.append("behavior evaluation catalog_version does not match workflow catalog")
     suite = data.get("suite")
@@ -142,6 +170,11 @@ def validate_case_suite(
             errors.append(f"{prefix} authority_status is invalid")
         if not isinstance(oracle.get("fallback"), str) or not oracle["fallback"]:
             errors.append(f"{prefix} fallback must be nonempty")
+        elif isinstance(context, dict) and context.get("host_mode") in HOST_FALLBACKS:
+            if oracle["fallback"] not in HOST_FALLBACKS[context["host_mode"]]:
+                errors.append(f"{prefix} fallback is invalid for host_mode {context['host_mode']}")
+        elif isinstance(context, dict):
+            errors.append(f"{prefix} host_mode is not declared by validation policy")
         for field in ("max_workflows", "max_coordination_primitives"):
             value = oracle.get(field)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -196,6 +229,68 @@ def _packet_errors(packet: object) -> list[str]:
     return errors
 
 
+def validate_reviews(
+    data: object,
+    *,
+    case_ids: set[str],
+    run_id: str,
+    valid_trials: set[tuple[str, int]],
+) -> tuple[dict[str, object] | None, list[str]]:
+    if not isinstance(data, dict) or data.get("schema_version") != "1":
+        return None, ["human review schema_version must be '1'"]
+    errors: list[str] = []
+    if data.get("run_id") != run_id:
+        errors.append("human review run_id does not match evaluation run")
+    if not isinstance(data.get("sampling_rule"), str) or not data["sampling_rule"].strip():
+        errors.append("human review sampling_rule must be nonempty")
+    reviews = data.get("reviews")
+    if not isinstance(reviews, list):
+        return None, errors + ["human reviews must be an array"]
+    summaries = []
+    keys: set[tuple[str, int]] = set()
+    for index, review in enumerate(reviews):
+        prefix = f"human review {index}"
+        if not isinstance(review, dict):
+            errors.append(f"{prefix} must be an object")
+            continue
+        case_id, trial_index = review.get("case_id"), review.get("trial_index")
+        if case_id not in case_ids:
+            errors.append(f"{prefix} refers to an unknown case")
+        if isinstance(trial_index, bool) or not isinstance(trial_index, int) or trial_index < 1:
+            errors.append(f"{prefix} has an invalid trial_index")
+            continue
+        key = (case_id, trial_index)
+        if case_id in case_ids and key not in valid_trials:
+            errors.append(f"{prefix} refers to a trial absent from the evaluation results")
+        if key in keys:
+            errors.append(f"duplicate human review {case_id}/{trial_index}")
+        keys.add(key)
+        if not isinstance(review.get("reviewer_role"), str) or not review["reviewer_role"].strip():
+            errors.append(f"{prefix} reviewer_role must be nonempty")
+        dimensions = review.get("dimensions")
+        if not isinstance(dimensions, dict) or set(dimensions) != REVIEW_DIMENSIONS:
+            errors.append(f"{prefix} dimensions must contain the exact rubric")
+            continue
+        outcomes = []
+        for name, dimension in dimensions.items():
+            if not isinstance(dimension, dict) or dimension.get("outcome") not in {"pass", "fail", "unrun"}:
+                errors.append(f"{prefix} dimension {name} has an invalid outcome")
+                continue
+            outcome = dimension["outcome"]
+            outcomes.append(outcome)
+            support_field = "reason" if outcome == "unrun" else "evidence"
+            if not isinstance(dimension.get(support_field), str) or not dimension[support_field].strip():
+                errors.append(f"{prefix} dimension {name} requires {support_field}")
+        derived = "fail" if "fail" in outcomes else "unrun" if "unrun" in outcomes else "pass"
+        if review.get("overall") != derived:
+            errors.append(f"{prefix} overall must equal derived outcome {derived}")
+        summaries.append({"case_id": case_id, "trial_index": trial_index, "overall": derived})
+    if errors:
+        return None, errors
+    counts = {outcome: sum(item["overall"] == outcome for item in summaries) for outcome in ("pass", "fail", "unrun")}
+    return {"status": "RECORDED" if summaries else "UNRUN", "counts": counts, "reviews": summaries}, []
+
+
 def _signature(packet: dict[str, object]) -> tuple[object, ...]:
     return (
         tuple(sorted(packet["workflow_ids"])),
@@ -242,8 +337,8 @@ def evaluate(case_data: dict[str, object], result_data: object) -> tuple[dict[st
     structural_errors: list[str] = []
     if not isinstance(result_data, dict):
         return None, ["evaluation results must be an object"]
-    if result_data.get("schema_version") != "1":
-        structural_errors.append("evaluation results schema_version must be '1'")
+    if result_data.get("schema_version") != BEHAVIOR_SCHEMA_VERSION:
+        structural_errors.append(f"evaluation results schema_version must be {BEHAVIOR_SCHEMA_VERSION!r}")
     run = result_data.get("run")
     run_fields = {
         "run_id", "skill_revision", "workflow_catalog_marker", "host", "model",
@@ -393,14 +488,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cases", type=Path, default=root / "references" / "behavior-evaluation-cases.json")
     parser.add_argument("--results", type=Path, required=True)
     parser.add_argument("--json-report", type=Path)
+    parser.add_argument("--policy", type=Path, default=DEFAULT_POLICY_PATH)
+    parser.add_argument("--reviews", type=Path)
     args = parser.parse_args(argv)
     try:
+        policy = load_validation_policy(args.policy)
+        _configure_policy(policy)
         cases = _load_json(args.cases)
         results = _load_json(args.results)
-    except (OSError, json.JSONDecodeError) as exc:
+        reviews = _load_json(args.reviews) if args.reviews else None
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(f"Behavior evaluation input error: {exc}", file=sys.stderr)
         return 2
-    errors = validate_case_suite(cases)
+    errors = validate_case_suite(cases, policy=policy)
     if errors:
         print("Behavior evaluation case validation failed:", file=sys.stderr)
         for error in errors:
@@ -412,6 +512,23 @@ def main(argv: list[str] | None = None) -> int:
         for error in errors:
             print(f"- {error}", file=sys.stderr)
         return 2
+    if reviews is not None:
+        human_report, review_errors = validate_reviews(
+            reviews,
+            case_ids={case["id"] for case in cases["cases"]},
+            run_id=results["run"]["run_id"],
+            valid_trials={
+                (trial.get("case_id"), trial.get("trial_index"))
+                for trial in results["trials"]
+                if isinstance(trial, dict)
+            },
+        )
+        if review_errors:
+            print("Human review validation failed:", file=sys.stderr)
+            for error in review_errors:
+                print(f"- {error}", file=sys.stderr)
+            return 2
+        report["human_review"] = human_report
     rendered = json.dumps(report, indent=2, sort_keys=True)
     print(rendered)
     if args.json_report:

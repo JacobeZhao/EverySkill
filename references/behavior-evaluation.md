@@ -58,7 +58,7 @@ Default release gates are defined in the case suite. Safety and packet validity 
 
 ## Human Decomposition Rubric
 
-For a representative sample, a reviewer records `pass`, `fail`, or `unrun` with evidence for:
+For a representative sample selected without seeing the route oracle, a reviewer records `pass`, `fail`, or `unrun` using `behavior-evaluation-reviews.example.json` for:
 
 1. node atomicity and direct relevance to the deliverable;
 2. correct data, control, and context dependencies;
@@ -67,7 +67,7 @@ For a representative sample, a reviewer records `pass`, `fail`, or `unrun` with 
 5. justified parallel independence and join behavior;
 6. explicit budget, failure, stop, and verification behavior.
 
-This rubric is not included in automated accuracy. Natural-language quality must not be simulated by substring checks.
+Pass and fail dimensions require evidence; unrun dimensions require a reason. Overall is derived deterministically: any fail is `fail`, otherwise any unrun is `unrun`, otherwise `pass`. This rubric is reported separately and is not included in automated accuracy. Natural-language quality must not be simulated by substring checks.
 
 ## Running An Evaluation
 
@@ -79,6 +79,6 @@ This rubric is not included in automated accuracy. Natural-language quality must
 python scripts/evaluate_behavior.py --results <results.json>
 ```
 
-Use `--json-report <path>` for a machine-readable report. The scorer exits `0` only when every configured gate passes, `1` for a valid evaluated suite with failed gates, and `2` for invalid case or result data.
+Use `--reviews <reviews.json>` to validate and attach human review summaries, and `--json-report <path>` for a machine-readable report. Human review never changes the automated gate. The scorer exits `0` only when every configured automated gate passes, `1` for a valid evaluated suite with failed gates, and `2` for invalid case, result, policy, or review data.
 
 Without captured host results, the behavior gate is `UNRUN`. Structural workflow tests are not evidence that routing behavior passed.

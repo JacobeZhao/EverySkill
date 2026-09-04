@@ -1,0 +1,41 @@
+{
+  "schema_version": "1",
+  "contract": {
+    "required_fields": ["id", "version", "controller", "topology", "topology_regions", "tasks", "edges", "join_policy", "context_policy", "budget", "stop_conditions", "failure_policy", "verification", "output"],
+    "controllers": ["code", "llm", "hybrid"],
+    "edge_kinds": ["data", "control", "context"]
+  },
+  "topology": {
+    "primitives": ["DIRECT", "ROUTE_ONE", "HANDOFF", "SEQUENTIAL", "PARALLEL_SECTION", "PARALLEL_SAMPLE", "ORCHESTRATOR_WORKERS", "REVIEW_LOOP", "HUMAN_GATE"],
+    "coordination_primitives": ["HANDOFF", "SEQUENTIAL", "PARALLEL_SECTION", "PARALLEL_SAMPLE", "ORCHESTRATOR_WORKERS", "REVIEW_LOOP", "HUMAN_GATE"],
+    "join_modes": ["all", "all_settled", "quorum", "first_acceptable"],
+    "remaining_branch_policies": ["cancel", "ignore"],
+    "advanced_example_required_primitives": ["HANDOFF", "PARALLEL_SECTION", "PARALLEL_SAMPLE", "ORCHESTRATOR_WORKERS"],
+    "orchestrator_workers": {"max_depth": 1}
+  },
+  "routing": {
+    "statuses": ["core_direct", "routed", "clarification_required", "blocked", "failed"],
+    "authority_statuses": ["sufficient", "conditional", "missing", "forbidden", "unknown"],
+    "host_fallbacks": {
+      "full": ["none", "block_without_simulation", "partial_result", "stop_with_collected_evidence", "stop_with_unresolved_findings", "wait_for_authority", "block_forbidden", "rebuild_or_block", "reject_incompatible_packet", "rebuild_v2"],
+      "serial_only": ["serialize_parallel_regions"],
+      "single_agent": ["isolated_sequential_tasks"],
+      "no_human_gate": ["block_with_required_decision"]
+    }
+  },
+  "budgets": {
+    "required_caps": {
+      "max_workers": {"minimum": 0, "maximum": 4},
+      "max_parallel_branches": {"minimum": 0, "maximum": 4},
+      "max_delegation_depth": {"minimum": 0, "maximum": 2},
+      "max_review_rounds": {"minimum": 0, "maximum": 2}
+    }
+  },
+  "scenarios": {
+    "schema_version": "2",
+    "kinds": ["positive", "near_miss", "coverage"],
+    "required_coverage": ["direct-fast-path", "route-one-fast-path", "diagnose-then-fix", "research-then-artifact", "software-plus-documentation", "two-distinct-deliverables-composition", "explicit-skill-dominance", "read-only-mode", "missing-capability", "worker-partial-failure", "budget-stop", "no-progress-stop", "missing-authority", "forbidden-authority", "stale-workflow-marker", "v1-incompatible", "v1-rebuild", "sequential-dependency", "parallel-independence", "parallel-sample", "review-loop", "human-gate", "host-parallel-fallback", "host-single-agent-fallback", "no-human-gate-fallback"],
+    "required_workflow_case_kinds": ["positive", "near_miss"]
+  },
+  "behavior_evaluation": {"schema_version": "1"}
+}

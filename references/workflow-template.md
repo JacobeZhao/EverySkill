@@ -2,6 +2,8 @@
 
 Use this template only after the workflow catalog shows a distinct repeated outcome that cannot be handled by `DIRECT` or `ROUTE_ONE`. Replace every placeholder and remove unused regions; budgets are caps, not targets.
 
+The equivalent conservative skeleton can be generated with `scripts/scaffold_workflow.py`. Shared validation bounds and supported values are defined in [validation-policy.json](validation-policy.json).
+
 ## Minimal Contract
 
 <!-- example-workflow-contract -->

@@ -16,10 +16,15 @@ EverySkill 是一个可配置的 Agent/Skill 编排 Skill。它通过 Markdown �
 - `references/route-packet-examples.md`：直接、并行、权限门控、部分失败和过期 Packet 示例。
 - `references/host-capabilities.md`：宿主最小能力和安全降级规则。
 - `references/workflow-scenarios.json`：正例、近似误匹配、权限、预算、失败和版本场景。
+- `references/validation-policy.json`：结构校验共享的原语、状态、预算和覆盖策略。
 - `references/behavior-evaluation.md`：fresh-agent 隔离、结果采集、指标和人工拆分审查规范。
 - `references/behavior-evaluation-cases.json`：独立于结构场景的行为评估案例和门禁。
+- `references/behavior-evaluation-reviews.example.json`：人工拆分质量评审的标准记录格式。
 - `scripts/evaluate_behavior.py`：不调用模型的离线行为评分器。
 - `scripts/validate_workflows.py`：校验工作流目录、契约结构、任务 DAG、预算和场景覆盖。
+- `scripts/topology_analysis.py`：计算结构关键路径、最大并行宽度和 fan-in/fan-out。
+- `scripts/report_coverage.py`：生成不冒充行为正确率的确定性结构覆盖报告。
+- `scripts/scaffold_workflow.py`：生成最小串行工作流骨架，不自动修改目录或场景。
 - `tests/`：工作流校验器和行为评分器回归测试。
 
 ## 如何配置
@@ -27,7 +32,7 @@ EverySkill 是一个可配置的 Agent/Skill 编排 Skill。它通过 Markdown �
 使用者可以按自己的 Skill 目录和宿主能力修改或新增工作流：
 
 1. 阅读 `references/workflow-authoring-guide.md`，确认新需求不能由直接处理、单 Skill 或已有工作流覆盖。
-2. 复制 `references/workflow-template.md`，定义任务 DAG、类型化边和 `topology_regions`。
+2. 复制 `references/workflow-template.md`，或使用 `scripts/scaffold_workflow.py` 生成最小骨架，再定义任务 DAG、类型化边和 `topology_regions`。
 3. 在 `references/workflow-catalog.md` 增加唯一的工作流 ID、版本、匹配条件和引用路径。
 4. 在 `SKILL.md` 中保持直接链接，并在 `workflow-scenarios.json` 中补充正例、近似误匹配、权限、失败、预算和宿主降级场景。
 5. 运行校验器和测试，确认依赖图、拓扑区域、版本、预算和引用一致。
@@ -39,6 +44,8 @@ EverySkill 是一个可配置的 Agent/Skill 编排 Skill。它通过 Markdown �
 ```powershell
 python scripts/validate_workflows.py
 python -m pytest -q
+python scripts/report_coverage.py
+python scripts/topology_analysis.py
 ```
 
 宿主采集 fresh-agent 结果后可运行：
@@ -48,5 +55,7 @@ python scripts/evaluate_behavior.py --results <results.json>
 ```
 
 没有真实宿主结果时，行为门禁为 `UNRUN`；结构测试通过不能替代真实路由质量评估。
+
+GitHub Actions 会在 push 和 pull request 上运行无密钥、无外部服务的结构校验与离线测试。校验策略可通过 `references/validation-policy.json` 调整；新增一种全新的拓扑语义仍需对应的校验实现，不能只靠配置声明。
 
 本仓库不包含业务后端、持久化调度器或生产 Agent 执行器。配置和使用以 Markdown 契约为准。

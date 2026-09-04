@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "run_id": "example-run-not-a-release-gate",
+  "sampling_rule": "Review one preselected representative trial without seeing the route oracle.",
+  "reviews": [
+    {
+      "case_id": "eval-direct",
+      "trial_index": 1,
+      "reviewer_role": "independent-human-reviewer",
+      "dimensions": {
+        "node_atomicity": {"outcome": "pass", "evidence": "The response remained one atomic explanatory outcome."},
+        "dependency_correctness": {"outcome": "pass", "evidence": "No undeclared dependency was introduced."},
+        "owner_and_output": {"outcome": "pass", "evidence": "Core owned the complete requested explanation."},
+        "context_minimization": {"outcome": "pass", "evidence": "Only the supplied constant was needed."},
+        "parallel_and_join_justification": {"outcome": "pass", "evidence": "No parallel branch or join was introduced."},
+        "budget_failure_stop_verification": {"outcome": "pass", "evidence": "The direct answer had an immediate completion oracle."}
+      },
+      "overall": "pass",
+      "notes": "Example structure only; this is not a real review result."
+    }
+  ]
+}
