@@ -8,12 +8,12 @@ EverySkill 当前是一个可配置的 Agent/Skill 编排 Skill 包，不是前�
 
 它通过 Markdown 协议、工作流契约和场景规范，指导宿主 Agent 针对具体问题选择合适的编排方式，并输出可解释、可验证、受权限和预算约束的任务拓扑。
 
-当前迭代版本：v0.2，可配置、可复现的编排决策规范。
+当前迭代版本：v0.3，具备高级拓扑实例、真实 Skill 组合案例和离线行为评估协议。
 
 ## 已完成
 
 - 建立核心路由与编排协议：意图分类、复杂度、风险、权限、置信度和 Route Packet。
-- 定义标准拓扑原语：`DIRECT`、`ROUTE_ONE`、`SEQUENTIAL`、`PARALLEL_SECTION`、`PARALLEL_SAMPLE`、`ORCHESTRATOR_WORKERS`、`REVIEW_LOOP`、`HUMAN_GATE`。
+- 定义标准拓扑原语：`DIRECT`、`ROUTE_ONE`、`HANDOFF`、`SEQUENTIAL`、`PARALLEL_SECTION`、`PARALLEL_SAMPLE`、`ORCHESTRATOR_WORKERS`、`REVIEW_LOOP`、`HUMAN_GATE`。
 - 建立工作流目录和版本机制。
 - 提供四个示例工作流：软件变更、诊断、研究决策、制品创建。
 - 为工作流定义任务节点、依赖边、上下文策略、汇合策略、预算、停止、失败和验证规则。
@@ -28,33 +28,40 @@ EverySkill 当前是一个可配置的 Agent/Skill 编排 Skill 包，不是前�
 - 定义宿主最小能力，以及无并行、多 Agent、持久化、人工门控和审查能力时的安全降级。
 - 将场景 schema 升级到 v2，记录选择理由、权限状态、宿主模式和降级结果。
 - 扩展校验器，检查类型化边、拓扑区域、并行汇合、有限复核和场景决策字段。
+- 定义 `quorum` 与 `first_acceptable` 的验收、失败和安全取消语义，并提供可校验实例。
+- 将动态 `ORCHESTRATOR_WORKERS` 限制为深度 1，要求规划任务、Worker 模板、创建规则、去重键、预算、汇合和停止条件。
+- 完善 `HANDOFF` 的来源、目标、最小上下文、验收和失败契约。
+- 增加多工作流组合契约，校验实例 ID、工作流版本、跨工作流任务引用、独立验收、悬空边和环。
+- 增加 `$guided-multi-agent-development` 与 `$continuous-technical-debt-cleanup` 的真实 Skill 路由案例，覆盖显式路由、继续已有流程、负例、两种串行顺序和只读并行边界。
+- 建立 fresh-agent 行为评估协议、独立案例集、结果格式和离线评分器，计算 Packet 有效率、路由准确率、稳定率、过度编排率和安全通过率。
+- 行为 oracle 现在校验主 owner 与 handoff 顺序；目标 Skill 不可见时将相应案例记录为 `UNRUN(missing_capability)`，不模拟成功。
 
 ## 当前可用能力
 
-使用者可以直接阅读 `SKILL.md`，并按自己的 Skill 目录修改或新增工作流契约。校验器可以检查引用、版本、契约字段、拓扑、DAG、预算和场景覆盖。
+使用者可以直接阅读 `SKILL.md`，并按自己的 Skill 目录修改或新增工作流契约。校验器可以检查引用、版本、契约字段、拓扑、DAG、预算、高级汇合、组合图和场景覆盖；宿主可以按标准结果格式采集 fresh-agent 试验，再由离线评分器确定行为门禁。
 
 当前验证结果：
 
 ```text
 Workflow validation passed.
-22 passed, 7 subtests passed
+47 passed, 7 subtests passed
+Fresh-agent behavior gate: UNRUN
 ```
 
 ## 尚未完成
 
-- 基于真实宿主 Agent 的 fresh-agent 行为评估，目前 Python 校验只验证规范一致性，不模拟 LLM 路由判断。
-- 更细粒度的 Skill 匹配冲突和多工作流组合示例。
-- `quorum`、`first_acceptable` 和动态 `ORCHESTRATOR_WORKERS` 的完整工作流实例。
+- 基于真实宿主 Agent 的 fresh-agent 行为采集尚未执行；当前只完成协议、独立案例、结果校验和离线评分，不能据此声称真实 LLM 路由已通过。
+- 真实 Skill 案例当前覆盖开发与技术债清理套件，更多跨领域 Skill 冲突仍需根据实际使用反馈增加。
 - 校验器的覆盖率报告、自动模板生成和 CI 集成。
 - 真实 Agent 执行仍由宿主环境负责，本项目不实现模型调用、任务队列、持久化或外部系统操作。
 
 ## 现状判断
 
-项目已经具备可配置的工作流模板、可复现的拓扑选择规则、可映射到任务子图的契约，以及结构化验证基础。当前重点是通过真实宿主行为评估检验路由稳定性，并完善复杂汇合和动态编排实例，而不是建设后端运行时。
+项目已经具备可配置的工作流模板、可复现的拓扑选择规则、可映射到任务子图的契约、高级汇合与组合实例，以及可复用的行为评估协议。当前主要差距是尚未由真实宿主完成 fresh-agent 数据采集，因此路由准确性和稳定性仍无实测结论；项目仍不需要建设后端运行时。
 
 ## 下一步优先级
 
-1. 建立 fresh-agent 行为评估流程，验证同一输入与约束产生稳定路由。
-2. 增加复杂汇合、动态 Worker 和多工作流冲突实例。
-3. 改进校验器错误信息、覆盖率报告和 CI 自动化检查。
+1. 在具备固定模型、宿主和可见 Skill 目录的环境中运行 fresh-agent 案例，采集首份真实评估结果。
+2. 根据真实误路由补充 owner 冲突、流程继续和过度编排案例，而不是预先扩充抽象规则。
+3. 改进校验器覆盖率报告和 CI 自动化检查。
 4. 根据实际宿主 Agent 的使用反馈迭代协议和示例工作流。

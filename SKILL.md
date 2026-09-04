@@ -115,7 +115,7 @@ Skip internal workflow loading when `DIRECT` or a straightforward `ROUTE_ONE` ca
 - **Evidence gathering, comparison, or recommendation as the deliverable:** [research and decision](references/workflow-research-decision.md)
 - **Substantial non-code artifact creation or revision:** [artifact creation](references/workflow-artifact-creation.md)
 
-Use at most one workflow per intent node and one lead workflow per deliverable. Treat supporting behavior as stages inside the lead workflow. Load multiple workflow references only for distinct deliverables with separate acceptance criteria, then compose their nodes through the intent DAG. Ask one blocking question only when the primary outcome would materially change authority, the deliverable, compatibility, or verification.
+Use at most one workflow per intent node and one lead workflow per deliverable. Treat supporting behavior as stages inside the lead workflow. Load multiple workflow references only for distinct deliverables with separate acceptance criteria, then compose their nodes through the intent DAG according to [the workflow composition contract](references/workflow-composition.md). Ask one blocking question only when the primary outcome would materially change authority, the deliverable, compatibility, or verification.
 
 Each selected workflow must supply bounded tasks and edges, owners, context inputs, join behavior, budget, stop and failure conditions, verification, and the coordinator-owned output. It may not redefine intent classes, risk, authority, skills, topology primitives, packet fields, statuses, error codes, or freshness rules. Matching a workflow grants neither capability nor permission; unavailable capabilities must produce a safe fallback, clarification, or block.
 
@@ -129,7 +129,7 @@ When authoring a new workflow, use [the workflow template](references/workflow-t
 
 Read [references/orchestration-strategies.md](references/orchestration-strategies.md) only when designing or extending workflows, or when no internal workflow fits a request that still needs orchestration. Never load it after selecting an internal workflow for the current request. Skip it for self-evident direct responses and straightforward single-skill handoffs.
 
-For any nontrivial topology decision, apply [the topology selection rules](references/topology-selection.md). Use its independence test, edge semantics, join modes, and required selection record. The task graph remains an outer DAG; represent bounded review or retry behavior as a declared `topology_regions` entry, never as an unbounded back-edge.
+For any nontrivial topology decision, apply [the topology selection rules](references/topology-selection.md). Use its independence test, edge semantics, join modes, and required selection record. Consult [the advanced topology examples](references/advanced-topology-examples.md) only when configuring or validating `quorum`, `first_acceptable`, dynamic workers, or `HANDOFF`; do not load examples during ordinary routing. The task graph remains an outer DAG; represent bounded review or retry behavior as a declared `topology_regions` entry, never as an unbounded back-edge.
 
 Choose among these canonical primitives: `DIRECT`, `ROUTE_ONE`, `HANDOFF`, `SEQUENTIAL`, `PARALLEL_SECTION`, `PARALLEL_SAMPLE`, `ORCHESTRATOR_WORKERS`, `REVIEW_LOOP`, and `HUMAN_GATE`. Compose complex work as a DAG of these primitives instead of inventing a new named pattern.
 
@@ -142,6 +142,7 @@ Record `orchestration.topology` only with canonical primitive names or an explic
 - Use `ORCHESTRATOR_WORKERS` when required subtasks cannot be known reliably in advance.
 - Add `REVIEW_LOOP` only when evaluation criteria and stop conditions are explicit.
 - Add `HUMAN_GATE` for unresolved authority, consequential actions, or decisions that require human judgment.
+- Use `HANDOFF` only for a real ownership transfer with declared source, target, minimized context, acceptance oracle, and failure status.
 
 Select `code`, `llm`, or `hybrid` control independently from the topology. Prefer deterministic code control for known flows and a bounded hybrid controller for open-ended work. Never infer a topology directly from a complexity score, spawn agents merely because a score is high, or add coordination without identifying its benefit, budget, join behavior, and termination condition.
 
@@ -194,6 +195,8 @@ Treat handoff as same-context instruction composition, not as a formal skill-to-
 4. Execute the selected topology while letting each downstream skill choose its local execution procedure. A target may not expand the request, authority, or context boundary.
 5. If the topology delegates, pass only the bounded packet slice required by each agent and preserve the parent permission boundary. Do not spawn agents merely because a K score is high.
 
+When `guided-multi-agent-development` and `continuous-technical-debt-cleanup` are visible, use [the development and debt routing cases](references/development-debt-suite-cases.md) to preserve their ownership boundary. They are visible Skill owners, not aliases for internal workflows. For a combined request, keep their approval, budget, recovery, and completion states separate; serialize shared-worktree writes even when independent read-only discovery can run in parallel.
+
 Do not re-emit `$everyskill`, select it as a target, or rebuild a valid matching v2 packet after `everyskill_applied: true`. Reuse that packet and continue its existing route or handoff. Treat recursion as an error only when a target or skill attempts to select or invoke `everyskill` again for the same revision, creates a cyclic handoff, or no valid consumable packet can break the loop. On successful handoff, set `route_status: routed` and `error_code: NONE`. If the runtime cannot load or apply a selected skill, use `HANDOFF_UNSUPPORTED`. If an explicitly requested skill is not available, use `EXPLICIT_SKILL_UNAVAILABLE`. Do not claim that either skill ran.
 
 ## Fail Safely
@@ -205,3 +208,7 @@ Do not re-emit `$everyskill`, select it as a target, or rebuild a valid matching
 - For `TARGET_FAILED`, fall back only to a semantically equivalent route for the same system and permission boundary; otherwise set `route_status: failed`.
 - Reuse a valid matching same-revision v2 packet and continue from its current state without changing `route_status`. Use `route_status: blocked` and `error_code: RECURSION_BLOCKED` only for a repeated same-revision invocation of `everyskill`, a cyclic handoff, or a loop with no valid consumable packet. For failed freshness, rebuild before handoff; if rebuilding is unavailable, set `blocked` and `STALE_PACKET`. Handle an incompatible version with `INCOMPATIBLE_PACKET_VERSION` instead.
 - Set `error_code` to the applicable uppercase code above, or `NONE`. Record material checks separately as `pass`, `fail`, `blocked`, or `unrun`. Never describe an unavailable or unexecuted target as successful.
+
+## Evaluate Behavior
+
+Use [the fresh-agent behavior evaluation protocol](references/behavior-evaluation.md) and its independent [case suite](references/behavior-evaluation-cases.json) only when evaluating or changing this Skill. The repository scorer validates captured results offline; it does not invoke a model. A structural validator pass is not evidence that live routing behavior passed, and missing target Skills leave affected cases `UNRUN` rather than simulated.

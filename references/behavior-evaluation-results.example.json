@@ -1,0 +1,30 @@
+{
+  "schema_version": "1",
+  "run": {
+    "run_id": "example-run-not-a-release-gate",
+    "skill_revision": "example-git-revision",
+    "workflow_catalog_marker": "catalog-2",
+    "host": "example-host",
+    "model": "example-model-version",
+    "sampling": {"temperature": 0},
+    "capability_profile": "full",
+    "visible_skills": ["named-document-skill", "guided-multi-agent-development", "continuous-technical-debt-cleanup"]
+  },
+  "trials": [
+    {
+      "case_id": "eval-direct",
+      "trial_index": 1,
+      "packet": {
+        "workflow_ids": [],
+        "topology": ["DIRECT"],
+        "route_status": "core_direct",
+        "error_code": "NONE",
+        "authority_status": "sufficient",
+        "fallback": "none",
+        "primary_owners": ["core"],
+        "handoff_order": [],
+        "intent_count": 1
+      }
+    }
+  ]
+}

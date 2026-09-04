@@ -10,6 +10,8 @@ import sys
 from collections import deque
 from pathlib import Path, PurePosixPath
 
+from evaluate_behavior import validate_case_suite
+
 
 REQUIRED_CONTRACT_FIELDS = {
     "id",
@@ -100,6 +102,8 @@ REQUIRED_COVERAGE = {
     "no-human-gate-fallback",
 }
 CONTRACT_MARKER = "<!-- workflow-contract -->"
+ADVANCED_MARKER = "<!-- advanced-topology-examples -->"
+COMPOSITION_MARKER = "<!-- workflow-composition-examples -->"
 
 
 def _parse_topology(value: str) -> set[str]:
@@ -219,6 +223,36 @@ def _extract_contract(path: Path, root: Path, errors: list[str]) -> dict[str, ob
         errors.append(f"{label}: workflow contract must be a JSON object")
         return None
     return contract
+
+
+def _extract_marked_json(
+    path: Path, root: Path, marker: str, errors: list[str]
+) -> dict[str, object] | None:
+    label = _relative(path, root)
+    if not path.is_file():
+        errors.append(f"{label}: missing reference")
+        return None
+    text = path.read_text(encoding="utf-8")
+    if text.count(marker) != 1:
+        errors.append(f"{label}: expected exactly one {marker} marker")
+        return None
+    pattern = re.compile(
+        re.escape(marker) + r"[ \t]*\r?\n[ \t]*```json[ \t]*\r?\n(.*?)\r?\n[ \t]*```",
+        re.DOTALL,
+    )
+    match = pattern.search(text)
+    if not match:
+        errors.append(f"{label}: marker must be immediately followed by fenced JSON")
+        return None
+    try:
+        data = json.loads(match.group(1))
+    except json.JSONDecodeError as exc:
+        errors.append(f"{label}: malformed JSON: {exc.msg} at line {exc.lineno}")
+        return None
+    if not isinstance(data, dict):
+        errors.append(f"{label}: marked JSON must be an object")
+        return None
+    return data
 
 
 def _validate_graph(contract: dict[str, object], label: str, errors: list[str]) -> None:
@@ -350,6 +384,11 @@ def _validate_topology_regions(
     known_tasks = {
         task.get("id") for task in tasks if isinstance(task, dict) and isinstance(task.get("id"), str)
     }
+    task_owners = {
+        task["id"]: task.get("owner")
+        for task in tasks
+        if isinstance(task, dict) and isinstance(task.get("id"), str)
+    }
     adjacency = {task_id: [] for task_id in known_tasks}
     for edge in edges:
         if not isinstance(edge, dict):
@@ -415,8 +454,115 @@ def _validate_topology_regions(
             join_mode = region.get("join_mode")
             if not isinstance(join_mode, str) or join_mode not in JOIN_MODES:
                 errors.append(f"{prefix} join_mode must be one of {', '.join(sorted(JOIN_MODES))}")
+            elif join_mode == "quorum":
+                minimum = region.get("min_acceptable")
+                if (
+                    isinstance(minimum, bool)
+                    or not isinstance(minimum, int)
+                    or minimum < 1
+                    or not isinstance(branches, list)
+                    or minimum > len(branches)
+                ):
+                    errors.append(f"{prefix} quorum min_acceptable must be within branch count")
+                for field in ("acceptance_oracle", "independence_basis", "on_quorum_failure"):
+                    if not isinstance(region.get(field), str) or not region[field].strip():
+                        errors.append(f"{prefix} quorum must declare {field}")
+            elif join_mode == "first_acceptable":
+                for field in ("acceptance_oracle", "remaining_branch_policy", "no_result_behavior"):
+                    if not isinstance(region.get(field), str) or not region[field].strip():
+                        errors.append(f"{prefix} first_acceptable must declare {field}")
+                policy = region.get("remaining_branch_policy")
+                if policy not in {"cancel", "ignore"}:
+                    errors.append(f"{prefix} remaining_branch_policy must be cancel or ignore")
+                if policy == "cancel" and (
+                    not isinstance(region.get("disposable_or_cancellation_evidence"), str)
+                    or not region["disposable_or_cancellation_evidence"].strip()
+                ):
+                    errors.append(f"{prefix} cancellation requires disposable_or_cancellation_evidence")
             if not isinstance(region.get("failure_mode"), str) or not region["failure_mode"].strip():
                 errors.append(f"{prefix} must declare failure_mode")
+        elif primitive == "ORCHESTRATOR_WORKERS":
+            for field in ("planner_task", "join_task"):
+                if not isinstance(region.get(field), str) or region[field] not in known_tasks:
+                    errors.append(f"{prefix} has an unknown {field}")
+            template = region.get("worker_template")
+            if not isinstance(template, dict) or {
+                "objective", "owner", "required_output"
+            } - set(template):
+                errors.append(f"{prefix} worker_template is incomplete")
+            else:
+                for field in ("objective", "owner", "required_output"):
+                    if not isinstance(template.get(field), str) or not template[field].strip():
+                        errors.append(f"{prefix} worker_template {field} must be nonempty")
+            for field in ("creation_rule", "dedup_key", "failure_mode"):
+                if not isinstance(region.get(field), str) or not region[field].strip():
+                    errors.append(f"{prefix} must declare {field}")
+            max_workers = region.get("max_workers")
+            if region.get("join_mode") not in JOIN_MODES:
+                errors.append(f"{prefix} join_mode must be one of {', '.join(sorted(JOIN_MODES))}")
+            elif region["join_mode"] == "quorum":
+                minimum = region.get("min_acceptable")
+                if (
+                    isinstance(minimum, bool)
+                    or not isinstance(minimum, int)
+                    or minimum < 1
+                    or not isinstance(max_workers, int)
+                    or minimum > max_workers
+                ):
+                    errors.append(f"{prefix} quorum min_acceptable must be within worker count")
+                for field in ("acceptance_oracle", "independence_basis", "on_quorum_failure"):
+                    if not isinstance(region.get(field), str) or not region[field].strip():
+                        errors.append(f"{prefix} quorum must declare {field}")
+            elif region["join_mode"] == "first_acceptable":
+                for field in ("acceptance_oracle", "remaining_branch_policy", "no_result_behavior"):
+                    if not isinstance(region.get(field), str) or not region[field].strip():
+                        errors.append(f"{prefix} first_acceptable must declare {field}")
+                policy = region.get("remaining_branch_policy")
+                if policy not in {"cancel", "ignore"}:
+                    errors.append(f"{prefix} remaining_branch_policy must be cancel or ignore")
+                if policy == "cancel" and (
+                    not isinstance(region.get("disposable_or_cancellation_evidence"), str)
+                    or not region["disposable_or_cancellation_evidence"].strip()
+                ):
+                    errors.append(f"{prefix} cancellation requires disposable_or_cancellation_evidence")
+            max_depth = region.get("max_depth")
+            budget = contract.get("budget")
+            worker_budget = budget.get("max_workers") if isinstance(budget, dict) else None
+            depth_budget = budget.get("max_delegation_depth") if isinstance(budget, dict) else None
+            if isinstance(max_workers, bool) or not isinstance(max_workers, int) or max_workers < 1:
+                errors.append(f"{prefix} max_workers must be a positive integer")
+            elif isinstance(worker_budget, (int, float)) and max_workers > worker_budget:
+                errors.append(f"{prefix} max_workers exceeds the workflow worker budget")
+            if max_depth != 1:
+                errors.append(f"{prefix} max_depth must be exactly 1")
+            elif isinstance(depth_budget, (int, float)) and max_depth > depth_budget:
+                errors.append(f"{prefix} max_depth exceeds the workflow delegation budget")
+            stops = region.get("stop_conditions")
+            if not isinstance(stops, list) or not stops or any(not isinstance(item, str) or not item for item in stops):
+                errors.append(f"{prefix} stop_conditions must be nonempty strings")
+        elif primitive == "HANDOFF":
+            source_task = region.get("source_task")
+            target_task = region.get("target_task")
+            if not isinstance(source_task, str) or source_task not in known_tasks:
+                errors.append(f"{prefix} has an unknown source_task")
+            if not isinstance(target_task, str) or target_task not in known_tasks:
+                errors.append(f"{prefix} has an unknown target_task")
+            elif isinstance(source_task, str) and source_task in known_tasks and not reaches(source_task, target_task):
+                errors.append(f"{prefix} source_task does not reach target_task")
+            for field in ("source_owner", "target_owner", "acceptance_oracle", "failure_mode"):
+                if not isinstance(region.get(field), str) or not region[field].strip():
+                    errors.append(f"{prefix} must declare {field}")
+            if isinstance(source_task, str) and source_task in task_owners and region.get("source_owner") != task_owners[source_task]:
+                errors.append(f"{prefix} source_owner must match source_task owner")
+            if isinstance(target_task, str) and target_task in task_owners and region.get("target_owner") != task_owners[target_task]:
+                errors.append(f"{prefix} target_owner must match target_task owner")
+            if region.get("source_owner") == region.get("target_owner"):
+                errors.append(f"{prefix} must transfer ownership to a different owner")
+            context_contract = region.get("context_contract")
+            if not isinstance(context_contract, list) or not context_contract or any(
+                not isinstance(item, str) or not item for item in context_contract
+            ):
+                errors.append(f"{prefix} context_contract must be nonempty strings")
         elif primitive == "REVIEW_LOOP":
             task_ids = region.get("task_ids")
             max_rounds = region.get("max_rounds")
@@ -675,6 +821,190 @@ def _validate_scenarios(
         errors.append(f"{label}: every workflow needs a near-miss scenario; missing {', '.join(sorted(workflow_ids - near_misses))}")
 
 
+def _validate_advanced_examples(path: Path, root: Path, errors: list[str]) -> None:
+    label = _relative(path, root)
+    data = _extract_marked_json(path, root, ADVANCED_MARKER, errors)
+    if data is None:
+        return
+    if data.get("schema_version") != "1":
+        errors.append(f"{label}: schema_version must be '1'")
+    examples = data.get("examples")
+    if not isinstance(examples, list) or not examples:
+        errors.append(f"{label}: examples must be a nonempty array")
+        return
+    example_ids: list[str] = []
+    covered: set[str] = set()
+    for index, example in enumerate(examples):
+        prefix = f"{label}: example {index}"
+        if not isinstance(example, dict):
+            errors.append(f"{prefix} must be an object")
+            continue
+        example_id = example.get("id")
+        if not isinstance(example_id, str) or not example_id:
+            errors.append(f"{prefix} has an invalid id")
+        else:
+            example_ids.append(example_id)
+            prefix = f"{label}: example {example_id}"
+        topology = example.get("topology")
+        try:
+            tokens = _parse_topology(topology) if isinstance(topology, str) else set()
+        except ValueError as exc:
+            errors.append(f"{prefix}: invalid topology: {exc}")
+            tokens = set()
+        if not tokens:
+            errors.append(f"{prefix}: topology must be nonempty")
+        covered.update(tokens)
+        budget = example.get("budget")
+        if not isinstance(budget, dict):
+            errors.append(f"{prefix}: budget must be an object")
+        else:
+            for name, limit in BUDGET_LIMITS.items():
+                value = budget.get(name)
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0 or value > limit:
+                    errors.append(f"{prefix}: budget cap {name} must be between 0 and {limit}")
+        _validate_graph(example, prefix, errors)
+        _validate_topology_regions(example, tokens, prefix, errors)
+    if len(example_ids) != len(set(example_ids)):
+        errors.append(f"{label}: duplicate example ID")
+    required = {"HANDOFF", "PARALLEL_SECTION", "PARALLEL_SAMPLE", "ORCHESTRATOR_WORKERS"}
+    missing = required - covered
+    if missing:
+        errors.append(f"{label}: missing advanced primitive examples: {', '.join(sorted(missing))}")
+
+
+def _validate_compositions(
+    path: Path,
+    root: Path,
+    workflow_versions: dict[str, str],
+    errors: list[str],
+) -> None:
+    label = _relative(path, root)
+    data = _extract_marked_json(path, root, COMPOSITION_MARKER, errors)
+    if data is None:
+        return
+    if data.get("schema_version") != "1":
+        errors.append(f"{label}: schema_version must be '1'")
+    examples = data.get("examples")
+    if not isinstance(examples, list) or not examples:
+        errors.append(f"{label}: examples must be a nonempty array")
+        return
+    example_ids: list[str] = []
+    for index, example in enumerate(examples):
+        prefix = f"{label}: example {index}"
+        if not isinstance(example, dict):
+            errors.append(f"{prefix} must be an object")
+            continue
+        example_id = example.get("id")
+        if isinstance(example_id, str) and example_id:
+            example_ids.append(example_id)
+            prefix = f"{label}: example {example_id}"
+        else:
+            errors.append(f"{prefix} has an invalid id")
+        instances = example.get("instances")
+        if not isinstance(instances, list) or len(instances) < 2:
+            errors.append(f"{prefix}: instances must contain at least two workflows")
+            continue
+        instance_ids: list[str] = []
+        for instance in instances:
+            if not isinstance(instance, dict):
+                errors.append(f"{prefix}: instance must be an object")
+                continue
+            instance_id = instance.get("instance_id")
+            workflow_id = instance.get("workflow_id")
+            if not isinstance(instance_id, str) or not instance_id:
+                errors.append(f"{prefix}: instance has an invalid instance_id")
+            else:
+                instance_ids.append(instance_id)
+            if workflow_id not in workflow_versions:
+                errors.append(f"{prefix}: instance refers to unknown workflow {workflow_id!r}")
+            elif str(instance.get("workflow_version")) != workflow_versions[workflow_id]:
+                errors.append(f"{prefix}: instance workflow version does not match catalog")
+            if not isinstance(instance.get("acceptance_oracle"), str) or not instance["acceptance_oracle"].strip():
+                errors.append(f"{prefix}: every instance needs an independent acceptance_oracle")
+        if len(instance_ids) != len(set(instance_ids)):
+            errors.append(f"{prefix}: duplicate instance_id")
+        known_instances = set(instance_ids)
+        tasks = example.get("tasks")
+        task_ids: list[str] = []
+        task_instances: dict[str, str] = {}
+        if not isinstance(tasks, list) or not tasks:
+            errors.append(f"{prefix}: tasks must be a nonempty array")
+            continue
+        for task in tasks:
+            if not isinstance(task, dict) or not isinstance(task.get("id"), str):
+                errors.append(f"{prefix}: task has an invalid id")
+                continue
+            task_ids.append(task["id"])
+            if task.get("instance_id") not in known_instances:
+                errors.append(f"{prefix}: task refers to unknown instance")
+            else:
+                task_instances[task["id"]] = task["instance_id"]
+        if len(task_ids) != len(set(task_ids)):
+            errors.append(f"{prefix}: duplicate composition task ID")
+        known_tasks = set(task_ids)
+        adjacency = {task_id: [] for task_id in known_tasks}
+        indegree = {task_id: 0 for task_id in known_tasks}
+        instance_adjacency = {instance_id: set() for instance_id in known_instances}
+        cross_instance_edges = 0
+        edges = example.get("edges")
+        if not isinstance(edges, list):
+            errors.append(f"{prefix}: edges must be an array")
+        else:
+            for edge in edges:
+                if not isinstance(edge, dict):
+                    errors.append(f"{prefix}: edge must be an object")
+                    continue
+                source, target = edge.get("from"), edge.get("to")
+                if source not in known_tasks or target not in known_tasks:
+                    errors.append(f"{prefix}: dangling composition edge {source}->{target}")
+                    continue
+                if edge.get("kind") not in EDGE_KINDS:
+                    errors.append(f"{prefix}: composition edge kind is invalid")
+                adjacency[source].append(target)
+                indegree[target] += 1
+                source_instance = task_instances.get(source)
+                target_instance = task_instances.get(target)
+                if source_instance != target_instance:
+                    cross_instance_edges += 1
+                    if source_instance in instance_adjacency and target_instance in instance_adjacency:
+                        instance_adjacency[source_instance].add(target_instance)
+        pending = deque(node for node, degree in indegree.items() if degree == 0)
+        visited = 0
+        while pending:
+            node = pending.popleft()
+            visited += 1
+            for target in adjacency[node]:
+                indegree[target] -= 1
+                if indegree[target] == 0:
+                    pending.append(target)
+        if visited != len(known_tasks):
+            errors.append(f"{prefix}: composition graph contains a cycle")
+        unused_instances = known_instances - set(task_instances.values())
+        if unused_instances:
+            errors.append(f"{prefix}: instances without tasks: {', '.join(sorted(unused_instances))}")
+        if cross_instance_edges == 0:
+            errors.append(f"{prefix}: composition requires at least one cross-instance edge")
+        instance_indegree = {instance_id: 0 for instance_id in known_instances}
+        for targets in instance_adjacency.values():
+            for target in targets:
+                instance_indegree[target] += 1
+        instance_pending = deque(node for node, degree in instance_indegree.items() if degree == 0)
+        visited_instances = 0
+        while instance_pending:
+            node = instance_pending.popleft()
+            visited_instances += 1
+            for target in instance_adjacency[node]:
+                instance_indegree[target] -= 1
+                if instance_indegree[target] == 0:
+                    instance_pending.append(target)
+        if visited_instances != len(known_instances):
+            errors.append(f"{prefix}: cross-workflow instance graph contains a cycle")
+        if not isinstance(example.get("join_policy"), str) or not example["join_policy"].strip():
+            errors.append(f"{prefix}: join_policy must be nonempty")
+    if len(example_ids) != len(set(example_ids)):
+        errors.append(f"{label}: duplicate example ID")
+
+
 def validate(root: Path) -> list[str]:
     root = root.resolve()
     errors: list[str] = []
@@ -747,6 +1077,27 @@ def validate(root: Path) -> list[str]:
         workflow_topologies,
         errors,
     )
+    _validate_advanced_examples(root / "references" / "advanced-topology-examples.md", root, errors)
+    _validate_compositions(
+        root / "references" / "workflow-composition.md",
+        root,
+        {row["id"]: row["version"] for row in rows},
+        errors,
+    )
+    behavior_path = root / "references" / "behavior-evaluation-cases.json"
+    try:
+        behavior_data = json.loads(behavior_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        errors.append(f"{_relative(behavior_path, root)}: invalid behavior evaluation cases: {exc}")
+    else:
+        errors.extend(
+            f"{_relative(behavior_path, root)}: {error}"
+            for error in validate_case_suite(
+                behavior_data,
+                catalog_version=catalog_version,
+                workflow_ids=set(ids),
+            )
+        )
     return errors
 
 

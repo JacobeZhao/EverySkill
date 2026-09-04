@@ -12,6 +12,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts" / "validate_workflows.py"
 MARKER = "<!-- workflow-contract -->"
+ADVANCED_MARKER = "<!-- advanced-topology-examples -->"
+COMPOSITION_MARKER = "<!-- workflow-composition-examples -->"
 
 
 class WorkflowValidationTests(unittest.TestCase):
@@ -43,6 +45,17 @@ class WorkflowValidationTests(unittest.TestCase):
         mutation(contract)
         rendered = json.dumps(contract, indent=2, ensure_ascii=True)
         path.write_text(f"{prefix}{MARKER}{fence}```json\n{rendered}\n```{suffix}", encoding="utf-8")
+
+    def mutate_marked_json(self, root: Path, relative_path: str, marker: str, mutation) -> None:
+        path = root / relative_path
+        text = path.read_text(encoding="utf-8")
+        prefix, remainder = text.split(marker, 1)
+        fence, remainder = remainder.split("```json", 1)
+        payload, suffix = remainder.split("```", 1)
+        data = json.loads(payload)
+        mutation(data)
+        rendered = json.dumps(data, indent=2, ensure_ascii=True)
+        path.write_text(f"{prefix}{marker}{fence}```json\n{rendered}\n```{suffix}", encoding="utf-8")
 
     def assert_invalid(self, mutation, message: str) -> None:
         temporary, root = self.temporary_repository()
@@ -285,6 +298,205 @@ class WorkflowValidationTests(unittest.TestCase):
 
             with self.subTest(field=field):
                 self.assert_invalid(mutation, message)
+
+    def test_quorum_requires_oracle_and_valid_threshold(self):
+        def remove_oracle(data):
+            region = next(
+                region for example in data["examples"] for region in example["topology_regions"]
+                if region.get("join_mode") == "quorum"
+            )
+            del region["acceptance_oracle"]
+
+        self.assert_invalid(
+            lambda root: self.mutate_marked_json(
+                root, "references/advanced-topology-examples.md", ADVANCED_MARKER, remove_oracle
+            ),
+            "quorum must declare acceptance_oracle",
+        )
+
+        def exceed_branches(data):
+            region = next(
+                region for example in data["examples"] for region in example["topology_regions"]
+                if region.get("join_mode") == "quorum"
+            )
+            region["min_acceptable"] = len(region["branches"]) + 1
+
+        self.assert_invalid(
+            lambda root: self.mutate_marked_json(
+                root, "references/advanced-topology-examples.md", ADVANCED_MARKER, exceed_branches
+            ),
+            "quorum min_acceptable must be within branch count",
+        )
+
+    def test_first_acceptable_requires_safe_cancellation(self):
+        def mutation(data):
+            region = next(
+                region for example in data["examples"] for region in example["topology_regions"]
+                if region.get("join_mode") == "first_acceptable"
+            )
+            del region["disposable_or_cancellation_evidence"]
+
+        self.assert_invalid(
+            lambda root: self.mutate_marked_json(
+                root, "references/advanced-topology-examples.md", ADVANCED_MARKER, mutation
+            ),
+            "cancellation requires disposable_or_cancellation_evidence",
+        )
+
+    def test_dynamic_workers_are_depth_one_and_within_budget(self):
+        def mutation(data):
+            region = next(
+                region for example in data["examples"] for region in example["topology_regions"]
+                if region["primitive"] == "ORCHESTRATOR_WORKERS"
+            )
+            region["max_depth"] = 2
+
+        self.assert_invalid(
+            lambda root: self.mutate_marked_json(
+                root, "references/advanced-topology-examples.md", ADVANCED_MARKER, mutation
+            ),
+            "max_depth must be exactly 1",
+        )
+
+    def test_dynamic_workers_require_known_join_mode_and_complete_template(self):
+        def mutation(data):
+            region = next(
+                region for example in data["examples"] for region in example["topology_regions"]
+                if region["primitive"] == "ORCHESTRATOR_WORKERS"
+            )
+            region["join_mode"] = "banana"
+            region["worker_template"]["objective"] = ""
+
+        temporary, root = self.temporary_repository()
+        self.addCleanup(temporary.cleanup)
+        self.mutate_marked_json(
+            root, "references/advanced-topology-examples.md", ADVANCED_MARKER, mutation
+        )
+        result = self.run_validator(root)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("join_mode must be one of", result.stderr)
+        self.assertIn("worker_template objective must be nonempty", result.stderr)
+
+    def test_dynamic_worker_advanced_joins_require_their_semantics(self):
+        def mutation(data):
+            region = next(
+                region for example in data["examples"] for region in example["topology_regions"]
+                if region["primitive"] == "ORCHESTRATOR_WORKERS"
+            )
+            region["join_mode"] = "quorum"
+
+        self.assert_invalid(
+            lambda root: self.mutate_marked_json(
+                root, "references/advanced-topology-examples.md", ADVANCED_MARKER, mutation
+            ),
+            "quorum must declare acceptance_oracle",
+        )
+
+    def test_handoff_requires_known_target_and_context(self):
+        def mutation(data):
+            region = next(
+                region for example in data["examples"] for region in example["topology_regions"]
+                if region["primitive"] == "HANDOFF"
+            )
+            region["target_task"] = "missing"
+
+        self.assert_invalid(
+            lambda root: self.mutate_marked_json(
+                root, "references/advanced-topology-examples.md", ADVANCED_MARKER, mutation
+            ),
+            "unknown target_task",
+        )
+
+    def test_handoff_owners_must_match_tasks_and_transfer(self):
+        def mutation(data):
+            region = next(
+                region for example in data["examples"] for region in example["topology_regions"]
+                if region["primitive"] == "HANDOFF"
+            )
+            region["source_owner"] = "selected-skill"
+
+        temporary, root = self.temporary_repository()
+        self.addCleanup(temporary.cleanup)
+        self.mutate_marked_json(
+            root, "references/advanced-topology-examples.md", ADVANCED_MARKER, mutation
+        )
+        result = self.run_validator(root)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("source_owner must match source_task owner", result.stderr)
+        self.assertIn("must transfer ownership to a different owner", result.stderr)
+
+    def test_composition_rejects_version_drift_and_dangling_edges(self):
+        def wrong_version(data):
+            data["examples"][0]["instances"][0]["workflow_version"] = "999"
+
+        self.assert_invalid(
+            lambda root: self.mutate_marked_json(
+                root, "references/workflow-composition.md", COMPOSITION_MARKER, wrong_version
+            ),
+            "workflow version does not match catalog",
+        )
+
+        def dangling(data):
+            data["examples"][0]["edges"][0]["to"] = "missing"
+
+        self.assert_invalid(
+            lambda root: self.mutate_marked_json(
+                root, "references/workflow-composition.md", COMPOSITION_MARKER, dangling
+            ),
+            "dangling composition edge",
+        )
+
+    def test_composition_rejects_cycles_and_missing_acceptance(self):
+        def cycle(data):
+            example = data["examples"][0]
+            example["edges"].append({
+                "from": "publication.output",
+                "to": "implementation.output",
+                "kind": "control",
+            })
+
+        self.assert_invalid(
+            lambda root: self.mutate_marked_json(
+                root, "references/workflow-composition.md", COMPOSITION_MARKER, cycle
+            ),
+            "composition graph contains a cycle",
+        )
+
+        def missing_acceptance(data):
+            del data["examples"][0]["instances"][0]["acceptance_oracle"]
+
+        self.assert_invalid(
+            lambda root: self.mutate_marked_json(
+                root, "references/workflow-composition.md", COMPOSITION_MARKER, missing_acceptance
+            ),
+            "independent acceptance_oracle",
+        )
+
+    def test_composition_requires_used_instances_and_cross_instance_edge(self):
+        def mutation(data):
+            example = data["examples"][0]
+            for task in example["tasks"]:
+                task["instance_id"] = "implementation"
+            example["edges"] = [example["edges"][1]]
+
+        temporary, root = self.temporary_repository()
+        self.addCleanup(temporary.cleanup)
+        self.mutate_marked_json(
+            root, "references/workflow-composition.md", COMPOSITION_MARKER, mutation
+        )
+        result = self.run_validator(root)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("instances without tasks", result.stderr)
+        self.assertIn("requires at least one cross-instance edge", result.stderr)
+
+    def test_behavior_cases_track_catalog_and_known_workflows(self):
+        def mutation(root: Path) -> None:
+            path = root / "references" / "behavior-evaluation-cases.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["catalog_version"] = "stale"
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        self.assert_invalid(mutation, "catalog_version does not match workflow catalog")
 
 
 if __name__ == "__main__":

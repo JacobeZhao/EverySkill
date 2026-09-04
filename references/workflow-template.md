@@ -44,7 +44,9 @@ Use this template only after the workflow catalog shows a distinct repeated outc
 - `topology` contains only canonical primitives and describes composition, not status.
 - `tasks` own one bounded objective and output each; `dependencies` are startup barriers.
 - `edges` mirror every dependency and use only `data`, `control`, or `context`.
-- `topology_regions` map each selected primitive to concrete tasks. Parallel regions declare branches, join, join mode, and failure behavior. Review regions declare tasks, maximum rounds, and an exit task outside the region. Human gates declare the exact activation condition.
+- `topology_regions` map each selected primitive to concrete tasks. Parallel regions declare branches, join, join mode, and failure behavior. A `quorum` adds its threshold, acceptance oracle, independence basis, and no-quorum behavior. A `first_acceptable` join adds its oracle, remaining-branch policy, safe-cancellation evidence when applicable, and no-result behavior.
+- Dynamic Worker regions declare a planner, worker template, creation and deduplication rules, join, worker cap, depth 1, stop conditions, and failure behavior. `HANDOFF` regions declare source/target tasks and owners, minimized context, acceptance, and failure semantics.
+- Review regions declare tasks, maximum rounds, and an exit task outside the region. Human gates declare the exact activation condition.
 - `join_policy`, `context_policy`, `failure_policy`, `verification`, and `output` remain structured and nonempty.
 - `budget` values are numeric caps and must respect repository limits.
 - `stop_conditions` include successful, partial/blocked, cancellation, and budget exits when applicable.

@@ -11,6 +11,7 @@ Use this reference after intent and visible-skill ownership are known and before
 5. Add parallelism only for branches that can start from immutable shared inputs and do not write the same state.
 6. Add review or sampling only when it improves a named acceptance property enough to justify its budget.
 7. Add `HUMAN_GATE` only when a human decision can resolve conditional or unknown authority, compatibility, or product judgment.
+8. Add `HANDOFF` only when ownership actually transfers to a visible target with a bounded context contract and explicit return status.
 
 ## Primitive Decision Table
 
@@ -18,6 +19,7 @@ Use this reference after intent and visible-skill ownership are known and before
 | --- | --- | --- | --- | --- |
 | `DIRECT` | One atomic outcome; coordinator has capability and authority | The answer or action is self-contained | A named specialist is mandatory or a real dependency exists | Record the direct-result oracle |
 | `ROUTE_ONE` | One visible owner covers the outcome | One specialist can complete and verify the work | Multiple owners must exchange outputs or reconcile results | Define input, required output, authority, and failure result |
+| `HANDOFF` | A selected target owns the next procedure | Ownership transfers in the same Agent context or across a declared host boundary | The coordinator is still the complete owner or the target is unavailable | Declare source and target owners/tasks, minimized context, acceptance oracle, and failure status |
 | `SEQUENTIAL` | A data or control dependency between stages | A later task cannot start correctly before an earlier result | Ordering is only cosmetic | Declare the dependency edge and handoff output |
 | `PARALLEL_SECTION` | Two or more independent branches from immutable inputs | All branches are required or useful and a join can reconcile them | Branches share mutable ownership or one consumes another | Declare branches, join task, join mode, branch budget, and failure propagation |
 | `PARALLEL_SAMPLE` | Independent attempts can reduce uncertainty | Diverse hypotheses, evaluations, or candidate solutions improve confidence | The task has one deterministic answer or attempts would contaminate each other | Isolate prompts/context, define diversity requirement and evidence-based adjudication |
@@ -52,7 +54,19 @@ Every edge is also a startup dependency. A task becomes eligible only after its 
 - `quorum`: continue after a declared minimum number of acceptable independent results; never use majority as proof by itself.
 - `first_acceptable`: continue after the first result meeting a predeclared oracle and cancel or ignore remaining disposable branches safely.
 
+A `quorum` region declares `min_acceptable`, an `acceptance_oracle`, the basis for branch independence, and behavior when quorum is not reached. The threshold must not exceed branch count.
+
+A `first_acceptable` region declares its acceptance oracle, whether remaining branches are cancelled or ignored, evidence that cancellation is cooperative and disposable when cancellation is selected, and behavior when no result qualifies.
+
 Every parallel region declares exactly one join task and one join mode. The join records conflicts and failed branches instead of erasing them.
+
+## Dynamic Workers
+
+`ORCHESTRATOR_WORKERS` is a bounded discovery region, not permission for recursive delegation. Declare the planner task, worker template, creation rule, deduplication key, join task and mode, worker cap, stop conditions, and failure behavior. EverySkill contracts cap dynamic delegation at depth 1; workers cannot create workers.
+
+## Handoff Semantics
+
+A handoff transfers procedure ownership, not request ownership or authority. The coordinator retains the canonical request and passes only the target's required context slice. The target returns an explicit downstream status and evidence for the handoff acceptance oracle. Failure remains visible; a fallback target requires a new compatible routing decision and may not cross the original permission boundary.
 
 ## Graph Measures
 
